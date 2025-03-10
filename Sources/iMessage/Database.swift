@@ -1,6 +1,6 @@
 import Foundation
-import TypedStream
 import SQLite3
+import TypedStream
 
 private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
@@ -87,9 +87,6 @@ public final class Database {
         parameters: [any Bindable] = [],
         transform: (OpaquePointer) throws -> T?
     ) throws -> [T] {
-        print("Query: ", query)
-        print("Parameters: ", parameters)
-
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK,
             let statement = statement
@@ -278,7 +275,9 @@ public final class Database {
                     String(cString: $0)
                 }),
                     let data = Data(hexString: hexData),
-                          let plainText = try? TypedStreamDecoder.decode(data).compactMap({ $0.stringValue }).joined(separator: "\n")
+                    let plainText = try? TypedStreamDecoder.decode(data).compactMap({
+                        $0.stringValue
+                    }).joined(separator: "\n")
                 {
                     text = plainText
                 } else {
@@ -395,7 +394,7 @@ public final class Database {
 
 // MARK: -
 
-fileprivate protocol Bindable {
+private protocol Bindable {
     func bind(to statement: OpaquePointer, at index: Int32)
 }
 
