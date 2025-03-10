@@ -1,15 +1,15 @@
 # Madrid
 
-Madrid is a Swift package that provides read-only access to 
-your iMessage® `chat.db` database. 
+Madrid is a Swift package that provides read-only access to
+your iMessage® `chat.db` database.
 
 It comprises the following two modules:
 
-- **iMessage**: 
+- **iMessage**:
   Core functionality for querying an iMessage database.
-- **TypedStream**: 
-  A Swift implementation for decoding Apple's `typedstream` format, 
-  adapted from [Christopher Sardegna's work](https://chrissardegna.com/blog/reverse-engineering-apples-typedstream-format/) on 
+- **TypedStream**:
+  A Swift implementation for decoding Apple's `typedstream` format,
+  adapted from [Christopher Sardegna's work](https://chrissardegna.com/blog/reverse-engineering-apples-typedstream-format/) on
   [imessage-exporter](https://github.com/ReagentX/imessage-exporter).
 
 ## Requirements
@@ -56,14 +56,17 @@ let db = try iMessage.Database()
 
 // Fetch recent messages
 let recentMessages = try db.fetchMessages(limit: 10)
- 
+
 // Fetch messages from select individuals in time range
-let handles = [
+let pastWeek = Date.now.addingTimeInterval(-7*24*60*60)..<Date.now
+
+let aliases = [
     "johnny.appleseed@mac.com",
     "+18002752273"
 ]
-let pastWeek = Date.now.addingTimeInterval(-7*24*60*60)...Date.now
-for message in try db.fetchMessages(with: handles, in: pastWeek) {
+let handles = try db.fetchParticipant(matching: aliases)
+
+for message in try db.fetchMessages(with: Set(handles), in: pastWeek) {
     print("From: \(message.sender)")
     print("Content: \(message.content)")
     print("Sent at: \(message.timestamp)")
@@ -83,10 +86,9 @@ print(result.stringValue)
 
 ## Acknowledgments
 
-- [Christopher Sardegna](https://chrissardegna.com) 
+- [Christopher Sardegna](https://chrissardegna.com)
   ([@ReagentX](https://github.com/ReagentX))
   for reverse-engineering the `typedstream` format.
-
 
 ## License
 
