@@ -399,6 +399,7 @@ public final class TypedStreamDecoder {
             // Embedded data is stored as a C String in the objects table
             if embedded {
                 objectTable.append(.type(objectTypes))
+                seenEmbeddedTypes.insert(UInt32(typesTable.count))
             }
             typesTable.append(objectTypes)
             return typesTable.last
