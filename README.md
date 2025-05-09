@@ -84,6 +84,50 @@ let result = try decoder.decode(data)
 print(result.stringValue)
 ```
 
+## FAQ
+
+### "Database Disk Image is Malformed"
+
+If you get the error message
+"database disk image is malformed"
+when attempting to connect to your iMessage database,
+it typically indicates corruption in the SQLite file. 
+The error most often occurs when attempting to read the database
+while another process (like the Messages app) is actively using it.
+
+To check if the database file is corrupt,
+you can use SQLite's [built-in integrity check`](https://www.sqlite.org/pragma.html#pragma_integrity_check):
+
+```sh
+sqlite3 ~/Library/Messages/chat.db "PRAGMA integrity_check;
+```
+
+If the original database file is corrupt,
+restore from a Time Machine backup or other backup source.
+
+The most reliable way to prevent this error is to operate on a copy of the iMessage database:
+
+1. **Quit Messages:** 
+   Ensure the Messages app is completely closed.
+
+2. **Copy All Database Files:**
+   ```sh
+   # Create destination directory
+   mkdir -p ~/imessage_db_copy
+   # Copy main database and supporting files
+   cp -p ~/Library/Messages/chat.db ~/imessage_db_copy/
+   # Copy WAL and shared memory files if they exist
+   cp -p ~/Library/Messages/chat.db-* ~/imessage_db_copy/ 2>/dev/null || true
+   ```
+   **Always include the `-shm` and `-wal` files when copying a SQLite database using WAL mode**
+
+3. **Use the Copied Database:**
+   ```swift
+   let homeURL = FileManager.default.homeDirectoryForCurrentUser
+   let dbURL = homeURL.appendingPathComponent("imessage_db_copy/chat.db")
+   let db = try iMessage.Database(path: dbURL.path)
+   ```
+
 ## Acknowledgments
 
 - [Christopher Sardegna](https://chrissardegna.com)
