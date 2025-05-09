@@ -119,9 +119,7 @@ The most reliable way to prevent this error is to operate on a copy of the iMess
    # Copy WAL and shared memory files if they exist
    cp -p ~/Library/Messages/chat.db-* ~/imessage_db_copy/ 2>/dev/null || true
    ```
-   > [!IMPORTANT]  
-   > Always include the `-shm` and `-wal` files 
-   > when copying a SQLite database using WAL mode.
+   **Always include the `-shm` and `-wal` files when copying a SQLite database using WAL mode**
 
 3. **Use the Copied Database:**
    ```swift
