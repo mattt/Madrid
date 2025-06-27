@@ -26,7 +26,7 @@ Add Madrid as a dependency to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/loopwork-ai/madrid.git", from: "0.1.2")
+    .package(url: "https://github.com/loopwork/Madrid.git", from: "0.1.2")
 ]
 ```
 
@@ -91,7 +91,7 @@ print(result.stringValue)
 If you get the error message
 "database disk image is malformed"
 when attempting to connect to your iMessage database,
-it typically indicates corruption in the SQLite file. 
+it typically indicates corruption in the SQLite file.
 The error most often occurs when attempting to read the database
 while another process (like the Messages app) is actively using it.
 
@@ -107,7 +107,7 @@ restore from a Time Machine backup or other backup source.
 
 The most reliable way to prevent this error is to operate on a copy of the iMessage database:
 
-1. **Quit Messages:** 
+1. **Quit Messages:**
    Ensure the Messages app is completely closed.
 
 2. **Copy All Database Files:**
@@ -140,5 +140,5 @@ This project is licensed under the Apache License, Version 2.0.
 
 ## Legal
 
-iMessage® is a registered trademark of Apple Inc.  
+iMessage® is a registered trademark of Apple Inc.
 This project is not affiliated with, endorsed, or sponsored by Apple Inc.
