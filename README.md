@@ -26,7 +26,7 @@ Add Madrid as a dependency to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/loopwork/Madrid.git", from: "0.1.2")
+    .package(url: "https://github.com/mattt/Madrid.git", from: "0.1.2")
 ]
 ```
 
