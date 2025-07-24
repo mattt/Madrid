@@ -134,11 +134,13 @@ The most reliable way to prevent this error is to operate on a copy of the iMess
   ([@ReagentX](https://github.com/ReagentX))
   for reverse-engineering the `typedstream` format.
 
-## License
-
-This project is licensed under the Apache License, Version 2.0.
-
 ## Legal
 
 iMessage® is a registered trademark of Apple Inc.
 This project is not affiliated with, endorsed, or sponsored by Apple Inc.
+
+
+## License
+
+This project is available under the MIT license.
+See the LICENSE file for more info.
