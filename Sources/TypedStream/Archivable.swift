@@ -43,7 +43,7 @@ public enum Archivable: Hashable, Sendable {
             if text.hasPrefix("__k")  // System keys often start with __k
                 || text.contains("Attribute")  // Attribute names
                 || text.contains("NS")  // Foundation framework keys
-                || !text.contains(where: { $0.isLetter })  // Strings with no letters are likely metadata
+                || !text.contains(where: { $0.isLetter || $0.isNumber })  // Strings with no letters or numbers are likely metadata
             {
                 return nil
             }
