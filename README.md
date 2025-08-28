@@ -26,7 +26,7 @@ Add Madrid as a dependency to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/mattt/Madrid.git", from: "0.1.2")
+    .package(url: "https://github.com/mattt/Madrid.git", from: "0.2.0")
 ]
 ```
 
@@ -111,6 +111,7 @@ The most reliable way to prevent this error is to operate on a copy of the iMess
    Ensure the Messages app is completely closed.
 
 2. **Copy All Database Files:**
+
    ```sh
    # Create destination directory
    mkdir -p ~/imessage_db_copy
@@ -119,6 +120,7 @@ The most reliable way to prevent this error is to operate on a copy of the iMess
    # Copy WAL and shared memory files if they exist
    cp -p ~/Library/Messages/chat.db-* ~/imessage_db_copy/ 2>/dev/null || true
    ```
+
    **Always include the `-shm` and `-wal` files when copying a SQLite database using WAL mode**
 
 3. **Use the Copied Database:**
@@ -138,7 +140,6 @@ The most reliable way to prevent this error is to operate on a copy of the iMess
 
 iMessage® is a registered trademark of Apple Inc.
 This project is not affiliated with, endorsed, or sponsored by Apple Inc.
-
 
 ## License
 
