@@ -196,6 +196,7 @@ public final class Database {
         for chatId: Chat.ID? = nil,
         with participantHandles: Set<Account.Handle>? = nil,
         in dateRange: Range<Date>? = nil,
+        unreadOnly: Bool = false,
         limit: Int = 100
     ) throws -> [Message] {
         try withTransaction {
@@ -238,6 +239,11 @@ public final class Database {
                 }
             }
 
+            if unreadOnly {
+                conditions.append("m.is_read = 0")
+                conditions.append("m.is_from_me = 0")
+            }
+
             let query = """
                     SELECT 
                         m.guid,
@@ -246,7 +252,9 @@ public final class Database {
                         m.date,
                         m.is_from_me,
                         h.id,
-                        m.service
+                        m.service,
+                        m.is_read,
+                        m.date_read
                     FROM message m
                     \(chatId != nil ? "JOIN chat_message_join cmj ON m.ROWID = cmj.message_id" : "")
                     \(chatId != nil ? "JOIN chat c ON cmj.chat_id = c.ROWID" : "")
@@ -291,11 +299,19 @@ public final class Database {
                 let senderText = sqlite3_column_text(statement, 5)
                 let sender = senderText.map { Account.Handle(rawValue: String(cString: $0)) }
 
+                let isRead = sqlite3_column_int(statement, 7) != 0
+                let dateReadRaw = sqlite3_column_int64(statement, 8)
+                let dateRead: Date? = dateReadRaw != 0
+                    ? Date(nanosecondsSinceReferenceDate: dateReadRaw)
+                    : nil
+
                 return Message(
                     id: messageID,
                     text: text,
                     date: date,
                     isFromMe: isFromMe,
+                    isRead: isRead,
+                    dateRead: dateRead,
                     sender: sender
                 )
             }

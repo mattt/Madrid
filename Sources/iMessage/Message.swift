@@ -5,6 +5,8 @@ public struct Message: Identifiable, Hashable, Codable, Sendable {
     public let text: String
     public let date: Date
     public let isFromMe: Bool
+    public let isRead: Bool
+    public let dateRead: Date?
     public let sender: Account.Handle?
 }
 
