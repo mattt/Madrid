@@ -1,15 +1,13 @@
 import Foundation
 
-/**
- Contains logic and data used to deserialize data from a `typedstream`.
-
- `typedstream` is a binary serialization format developed by NeXT and later adopted by Apple.
- It's designed to serialize and deserialize complex object graphs and data structures in C and Objective-C.
-
- A `typedstream` begins with a header that includes format version and architecture information,
- followed by a stream of typed data elements. Each element is prefixed with type information,
- allowing the `TypedStreamDecoder` to understand the original data structures.
- */
+/// Contains logic and data used to deserialize data from a `typedstream`.
+///
+/// `typedstream` is a binary serialization format developed by NeXT and later adopted by Apple.
+/// It's designed to serialize and deserialize complex object graphs and data structures in C and Objective-C.
+///
+/// A `typedstream` begins with a header that includes format version and architecture information,
+/// followed by a stream of typed data elements. Each element is prefixed with type information,
+/// allowing the `TypedStreamDecoder` to understand the original data structures.
 public final class TypedStreamDecoder {
     /// Errors that can happen when parsing `typedstream` data.
     /// This corresponds to the new `typedstream` deserializer.
@@ -38,7 +36,7 @@ public final class TypedStreamDecoder {
             }
         }
     }
-    
+
     /// Represents data that results from attempting to parse a class from the `typedstream`
     private enum ClassResult {
         /// A reference to an already-seen class in the `TypedStreamReader`'s object table
@@ -46,7 +44,7 @@ public final class TypedStreamDecoder {
         /// A new class hierarchy to be inserted into the `TypedStreamReader`'s object table
         case classHierarchy([Archivable])
     }
-    
+
     // MARK: - Constants
 
     /// Indicates an `Int16` in the byte stream
@@ -81,13 +79,13 @@ public final class TypedStreamDecoder {
     var seenEmbeddedTypes: Set<UInt32>
     /// Stores the position of the current `Archivable.placeholder`
     var placeholder: Int?
-    
+
     // MARK: - Static Methods
-    
+
     /// Decode typedstream data into an array of Archivable objects
     /// - Parameter data: The data to decode
     /// - Returns: An array of decoded Archivable objects
-    /// - Throws: TypedStreamError if decoding fails
+    /// - Throws: An error when parsing fails or the stream is malformed.
     public static func decode(_ data: Data) throws -> [Archivable] {
         let bytes = [UInt8](data)
         let decoder = TypedStreamDecoder(stream: bytes)
@@ -107,7 +105,7 @@ public final class TypedStreamDecoder {
     }
 
     // MARK: - Methods
-    
+
     /// Attempt to get the data from the `typedstream`.
     ///
     /// Given a stream, construct a decoder object to parse it. `typedstream` data doesn't include property
@@ -137,7 +135,7 @@ public final class TypedStreamDecoder {
 
         return output
     }
-    
+
     /// Validate the `typedstream` header to ensure correct format
     private func validateHeader() throws {
         // Encoding type
@@ -523,9 +521,9 @@ public final class TypedStreamDecoder {
 
 // MARK: -
 
-fileprivate extension Array {
+extension Array {
     /// Safely access an array element to prevent index out of range errors
-    subscript(safe index: Int) -> Element? {
+    fileprivate subscript(safe index: Int) -> Element? {
         return indices.contains(index) ? self[index] : nil
     }
 }

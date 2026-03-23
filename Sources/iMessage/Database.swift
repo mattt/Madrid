@@ -4,12 +4,18 @@ import TypedStream
 
 private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
+/// Provides read-focused access to the Messages SQLite database.
 public final class Database {
     var db: OpaquePointer?
 
+    /// Defines flags used to open a SQLite database connection.
     public struct Flags: OptionSet, Sendable, Hashable {
+        /// The underlying SQLite bitmask value.
         public let rawValue: Int32
 
+        /// Creates a flags value from a raw SQLite bitmask.
+        ///
+        /// - Parameter rawValue: The SQLite open flags bitmask.
         public init(rawValue: Int32) {
             self.rawValue = rawValue
         }
@@ -42,9 +48,13 @@ public final class Database {
         public static let `default`: Flags = [.readOnly, .uri]
     }
 
+    /// Describes errors produced while opening or querying the database.
     public enum Error: Swift.Error {
+        /// The database file does not exist at the requested path.
         case databaseNotFound
+        /// SQLite failed to open the database.
         case failedToOpen(String)
+        /// SQLite failed while preparing or executing a query.
         case queryError(String)
     }
 
@@ -57,6 +67,14 @@ public final class Database {
         }
     }
 
+    /// Opens the Messages database at a path.
+    ///
+    /// When `path` is `nil`, this initializer uses the default
+    /// `~/Library/Messages/chat.db` location.
+    ///
+    /// - Parameter path: An optional absolute database path.
+    /// - Throws: ``Error/databaseNotFound`` when the file does not exist,
+    ///   or ``Error/failedToOpen(_:)`` when SQLite fails to open it.
     public convenience init(path: String? = nil) throws {
         let resolvedPath: String
         if let path = path {
@@ -73,6 +91,10 @@ public final class Database {
         try self.init(dbURI, flags: [.readOnly, .uri])
     }
 
+    /// Creates an in-memory database handle for tests and temporary data.
+    ///
+    /// - Returns: A database opened at SQLite's `:memory:` location.
+    /// - Throws: ``Error/failedToOpen(_:)`` when SQLite cannot create the database.
     public static func inMemory() throws -> Database {
         return try Database(":memory:", flags: [.readWrite, .create])
     }
@@ -110,6 +132,14 @@ public final class Database {
         return results
     }
 
+    /// Fetches chats, optionally filtered by participants and date range.
+    ///
+    /// - Parameters:
+    ///   - participantHandles: An optional set of handles that must be present in the chat.
+    ///   - dateRange: An optional date range used to filter chat activity.
+    ///   - limit: The maximum number of chats to return.
+    /// - Returns: Chats ordered by most recent message date, descending.
+    /// - Throws: ``Error/queryError(_:)`` when SQL preparation or execution fails.
     public func fetchChats(
         with participantHandles: Set<Account.Handle>? = nil,
         in dateRange: Range<Date>? = nil,
@@ -192,6 +222,15 @@ public final class Database {
         }
     }
 
+    /// Fetches messages, optionally filtered by chat, participants, and date range.
+    ///
+    /// - Parameters:
+    ///   - chatId: An optional chat identifier to scope the query.
+    ///   - participantHandles: An optional set of sender handles to include.
+    ///   - dateRange: An optional date range used to filter message dates.
+    ///   - limit: The maximum number of messages to return.
+    /// - Returns: Messages ordered by message date, descending.
+    /// - Throws: ``Error/queryError(_:)`` when SQL preparation or execution fails.
     public func fetchMessages(
         for chatId: Chat.ID? = nil,
         with participantHandles: Set<Account.Handle>? = nil,
@@ -309,6 +348,13 @@ public final class Database {
         }
     }
 
+    /// Fetches participants for a chat.
+    ///
+    /// - Parameters:
+    ///   - chatId: The chat identifier to query.
+    ///   - limit: The maximum number of participants to return.
+    /// - Returns: Participant handles associated with the chat.
+    /// - Throws: ``Error/queryError(_:)`` when SQL preparation or execution fails.
     public func fetchParticipants(
         for chatId: Chat.ID,
         limit: Int = 100
@@ -334,6 +380,16 @@ public final class Database {
 
     @available(iOS 16.0, *)
     @available(macOS 13.0, *)
+    /// Fetches participants whose aliases match the provided inputs.
+    ///
+    /// The matcher handles exact IDs, uncanonicalized IDs,
+    /// and suffix matches for normalized phone numbers.
+    ///
+    /// - Parameters:
+    ///   - aliases: Candidate phone numbers or email addresses to match.
+    ///   - limit: The maximum number of handles to return.
+    /// - Returns: Matching participant handles.
+    /// - Throws: ``Error/queryError(_:)`` when SQL preparation or execution fails.
     public func fetchParticipant(
         matching aliases: [String],
         limit: Int = 100
