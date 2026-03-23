@@ -247,7 +247,7 @@ public final class TypedStreamDecoder {
         guard idx + size <= stream.count else {
             throw Error.outOfBounds(index: idx + size, length: stream.count)
         }
-        let data = Data(stream[idx..<(idx + size)])
+        let data = Data(stream[idx ..< (idx + size)])
         idx += size
         return data
     }

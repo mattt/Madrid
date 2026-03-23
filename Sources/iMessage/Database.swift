@@ -173,7 +173,8 @@ public final class Database {
                             GROUP BY chat_id
                             HAVING COUNT(DISTINCT handle_id) = ?
                         )
-                    """)
+                    """
+                )
 
                 // Add each participant as a value
                 handles.forEach { handle in
@@ -207,7 +208,8 @@ public final class Database {
 
                 let displayName = sqlite3_column_text(statement, 1).map { String(cString: $0) }
                 let lastMessageDate = Date(
-                    nanosecondsSinceReferenceDate: sqlite3_column_int64(statement, 3))
+                    nanosecondsSinceReferenceDate: sqlite3_column_int64(statement, 3)
+                )
 
                 // Fetch participants for this chat
                 let participants = try fetchParticipants(for: chatId)
@@ -257,7 +259,8 @@ public final class Database {
                             JOIN handle h ON m.handle_id = h.ROWID
                             WHERE h.id IN (\(String(repeating: "?,", count: handles.count).dropLast()))
                         )
-                    """)
+                    """
+                )
 
                 // Add each participant as a value
                 handles.forEach { handle in
@@ -325,7 +328,8 @@ public final class Database {
                 }
 
                 let date = Date(
-                    nanosecondsSinceReferenceDate: sqlite3_column_int64(statement, 3))
+                    nanosecondsSinceReferenceDate: sqlite3_column_int64(statement, 3)
+                )
                 let isFromMe = sqlite3_column_int(statement, 4) != 0
                 let rawReadAt = sqlite3_column_int64(statement, 7)
                 let readAt =

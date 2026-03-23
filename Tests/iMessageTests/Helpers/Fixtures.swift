@@ -94,7 +94,8 @@ enum Fixtures {
                     chat_id INTEGER REFERENCES chat(ROWID),
                     message_id INTEGER REFERENCES message(ROWID)
                 );
-            """)
+            """
+        )
 
         // Insert sample chats
         try! db.execute(
@@ -103,7 +104,8 @@ enum Fixtures {
                 VALUES 
                     (1, 'chat-guid-1', 'Sample Group', 'iMessage'),
                     (2, 'chat-guid-2', 'Another Group', 'iMessage');
-            """)
+            """
+        )
 
         // Insert sample handles (participants)
         try! db.execute(
@@ -113,7 +115,8 @@ enum Fixtures {
                     (1, '+1234567890', 'iMessage'),
                     (2, 'person@example.com', 'iMessage'),
                     (3, 'third@example.com', 'iMessage');
-            """)
+            """
+        )
 
         // Link handles to chats - chat 2 shares one participant with chat 1
         try! db.execute(
@@ -122,7 +125,8 @@ enum Fixtures {
                 VALUES 
                     (1, 1), (1, 2),  -- First chat with two participants
                     (2, 1), (2, 3);  -- Second chat with overlapping participant
-            """)
+            """
+        )
 
         // Insert sample messages with different dates
         let now = Date()
@@ -142,7 +146,8 @@ enum Fixtures {
                     -- Messages for second chat (older)
                     (4, 'msg-guid-4', 'Old message', NULL, 1, \(twoDaysAgo.nanosecondsSinceReferenceDate ?? 0), 0, 0, 'iMessage'),
                     (5, 'msg-guid-5', 'Another old one', NULL, 3, \(twoDaysAndOneHourAgo.nanosecondsSinceReferenceDate ?? 0), 0, \(oneHourAgo.nanosecondsSinceReferenceDate ?? 0), 'iMessage');
-            """)
+            """
+        )
 
         // Link messages to chats
         try! db.execute(
@@ -153,7 +158,8 @@ enum Fixtures {
                     (1, 1), (1, 2), (1, 3),
                     -- Second chat messages (older)
                     (2, 4), (2, 5);
-            """)
+            """
+        )
 
         return db
     }

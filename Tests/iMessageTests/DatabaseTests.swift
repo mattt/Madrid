@@ -30,14 +30,14 @@ struct DatabaseTests {
         // Test with date filter - should only get chat with recent messages
         let now = Date()
         let yesterday = now.addingTimeInterval(-86400)
-        let filtered = try db.fetchChats(in: yesterday..<now)
+        let filtered = try db.fetchChats(in: yesterday ..< now)
         #expect(filtered.count == 1)
         #expect(filtered.first?.id.rawValue == "chat-guid-1")
 
         // Test with older date range - should get the second chat
         let threeDaysAgo = now.addingTimeInterval(-86400 * 3)
         let twoDaysAgo = now.addingTimeInterval(-86400 * 2)
-        let oldFiltered = try db.fetchChats(in: threeDaysAgo..<twoDaysAgo)
+        let oldFiltered = try db.fetchChats(in: threeDaysAgo ..< twoDaysAgo)
         #expect(oldFiltered.count == 1)
         #expect(oldFiltered.first?.id.rawValue == "chat-guid-2")
 
@@ -100,7 +100,7 @@ struct DatabaseTests {
         let today = Date()
         let rangeMessages = try db.fetchMessages(
             for: chatId,
-            in: yesterday..<today
+            in: yesterday ..< today
         )
         #expect(!rangeMessages.isEmpty)
     }
@@ -124,7 +124,7 @@ struct DatabaseTests {
         let today = Date()
         let rangeMessages = try db.fetchMessages(
             with: [handle],
-            in: yesterday..<today
+            in: yesterday ..< today
         )
         #expect(!rangeMessages.isEmpty)
     }

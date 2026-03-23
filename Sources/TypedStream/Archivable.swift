@@ -14,25 +14,23 @@ public enum Archivable: Hashable, Sendable {
 
     // MARK: - Convenience Properties
 
-    /**
-     If this archivable represents an `NSString` or `NSMutableString` object,
-     returns its string value.
-
-     ### Example
-     ```swift
-     let nsstring = Archivable.object(
-         Class(name: "NSString", version: 1),
-         [.string("Hello world")]
-     )
-     print(nsstring.stringValue) // Optional("Hello world")
-
-     let notNSString = Archivable.object(
-         Class(name: "NSNumber", version: 1),
-         [.signedInteger(100)]
-     )
-     print(notNSString.stringValue) // nil
-     ```
-     */
+    /// If this archivable represents an `NSString` or `NSMutableString` object,
+    /// returns its string value.
+    ///
+    /// ### Example
+    /// ```swift
+    /// let nsstring = Archivable.object(
+    ///     Class(name: "NSString", version: 1),
+    ///     [.string("Hello world")]
+    /// )
+    /// print(nsstring.stringValue) // Optional("Hello world")
+    ///
+    /// let notNSString = Archivable.object(
+    ///     Class(name: "NSNumber", version: 1),
+    ///     [.signedInteger(100)]
+    /// )
+    /// print(notNSString.stringValue) // nil
+    /// ```
     public var stringValue: String? {
         if case let .object(classInfo, value) = self,
             classInfo.name == "NSString" || classInfo.name == "NSMutableString",
@@ -47,31 +45,29 @@ public enum Archivable: Hashable, Sendable {
             {
                 return nil
             }
-            
+
             return text
         }
         return nil
     }
 
-    /**
-     If this archivable represents an `NSNumber` object containing an integer,
-     returns its 64-bit integer value.
-
-     ### Example
-     ```swift
-     let nsnumber = Archivable.object(
-         Class(name: "NSNumber", version: 1),
-         [.signedInteger(100)]
-     )
-     print(nsnumber.integerValue) // Optional(100)
-
-     let notNSNumber = Archivable.object(
-         Class(name: "NSString", version: 1),
-         [.string("Hello world")]
-     )
-     print(notNSNumber.integerValue) // nil
-     ```
-     */
+    /// If this archivable represents an `NSNumber` object containing an integer,
+    /// returns its 64-bit integer value.
+    ///
+    /// ### Example
+    /// ```swift
+    /// let nsnumber = Archivable.object(
+    ///     Class(name: "NSNumber", version: 1),
+    ///     [.signedInteger(100)]
+    /// )
+    /// print(nsnumber.integerValue) // Optional(100)
+    ///
+    /// let notNSNumber = Archivable.object(
+    ///     Class(name: "NSString", version: 1),
+    ///     [.string("Hello world")]
+    /// )
+    /// print(notNSNumber.integerValue) // nil
+    /// ```
     public var integerValue: Int64? {
         if case let .object(classInfo, value) = self,
             classInfo.name == "NSNumber",
@@ -83,25 +79,23 @@ public enum Archivable: Hashable, Sendable {
         return nil
     }
 
-    /**
-     If this archivable represents an `NSNumber` object containing a floating-point value,
-     returns its double-precision value.
-
-     ### Example
-     ```swift
-     let nsnumber = Archivable.object(
-         Class(name: "NSNumber", version: 1),
-         [.double(100.001)]
-     )
-     print(nsnumber.doubleValue) // Optional(100.001)
-
-     let notNSNumber = Archivable.object(
-         Class(name: "NSString", version: 1),
-         [.string("Hello world")]
-     )
-     print(notNSNumber.doubleValue) // nil
-     ```
-     */
+    /// If this archivable represents an `NSNumber` object containing a floating-point value,
+    /// returns its double-precision value.
+    ///
+    /// ### Example
+    /// ```swift
+    /// let nsnumber = Archivable.object(
+    ///     Class(name: "NSNumber", version: 1),
+    ///     [.double(100.001)]
+    /// )
+    /// print(nsnumber.doubleValue) // Optional(100.001)
+    ///
+    /// let notNSNumber = Archivable.object(
+    ///     Class(name: "NSString", version: 1),
+    ///     [.string("Hello world")]
+    /// )
+    /// print(notNSNumber.doubleValue) // nil
+    /// ```
     public var doubleValue: Double? {
         if case let .object(classInfo, value) = self,
             classInfo.name == "NSNumber",

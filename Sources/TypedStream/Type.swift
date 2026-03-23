@@ -92,7 +92,7 @@ public enum Type: Hashable, Sendable {
         var index = 1
         while index < types.count,
             let digit = UInt8(exactly: types[index]),
-            (48...57).contains(digit)
+            (48 ... 57).contains(digit)
         {
             length = length * 10 + Int(digit - 48)  // ASCII '0' is 48
             index += 1
