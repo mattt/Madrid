@@ -1,6 +1,11 @@
+/// Represents a globally unique identifier used by Messages records.
 public struct GUID: RawRepresentable, Hashable, Sendable {
+    /// The raw GUID string value.
     public let rawValue: String
 
+    /// Creates a GUID from a raw string value.
+    ///
+    /// - Parameter rawValue: The raw GUID string.
     public init(rawValue: String) {
         self.rawValue = rawValue
     }
