@@ -12,20 +12,24 @@ let package = Package(
         // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(
             name: "TypedStream",
-            targets: ["TypedStream"]),
+            targets: ["TypedStream"]
+        ),
         .library(
             name: "iMessage",
-            targets: ["iMessage"]),
+            targets: ["iMessage"]
+        ),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
         .target(
             name: "TypedStream",
-            dependencies: []),
+            dependencies: []
+        ),
         .target(
             name: "iMessage",
-            dependencies: ["TypedStream"]),
+            dependencies: ["TypedStream"]
+        ),
         .testTarget(
             name: "iMessageTests",
             dependencies: ["iMessage"]

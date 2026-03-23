@@ -17,7 +17,7 @@ public enum Archivable: Hashable, Sendable {
     /**
      If this archivable represents an `NSString` or `NSMutableString` object,
      returns its string value.
-
+    
      ### Example
      ```swift
      let nsstring = Archivable.object(
@@ -25,7 +25,7 @@ public enum Archivable: Hashable, Sendable {
          [.string("Hello world")]
      )
      print(nsstring.stringValue) // Optional("Hello world")
-
+    
      let notNSString = Archivable.object(
          Class(name: "NSNumber", version: 1),
          [.signedInteger(100)]
@@ -47,7 +47,7 @@ public enum Archivable: Hashable, Sendable {
             {
                 return nil
             }
-            
+
             return text
         }
         return nil
@@ -56,7 +56,7 @@ public enum Archivable: Hashable, Sendable {
     /**
      If this archivable represents an `NSNumber` object containing an integer,
      returns its 64-bit integer value.
-
+    
      ### Example
      ```swift
      let nsnumber = Archivable.object(
@@ -64,7 +64,7 @@ public enum Archivable: Hashable, Sendable {
          [.signedInteger(100)]
      )
      print(nsnumber.integerValue) // Optional(100)
-
+    
      let notNSNumber = Archivable.object(
          Class(name: "NSString", version: 1),
          [.string("Hello world")]
@@ -86,7 +86,7 @@ public enum Archivable: Hashable, Sendable {
     /**
      If this archivable represents an `NSNumber` object containing a floating-point value,
      returns its double-precision value.
-
+    
      ### Example
      ```swift
      let nsnumber = Archivable.object(
@@ -94,7 +94,7 @@ public enum Archivable: Hashable, Sendable {
          [.double(100.001)]
      )
      print(nsnumber.doubleValue) // Optional(100.001)
-
+    
      let notNSNumber = Archivable.object(
          Class(name: "NSString", version: 1),
          [.string("Hello world")]
