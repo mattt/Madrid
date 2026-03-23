@@ -246,7 +246,8 @@ public final class Database {
                         m.date,
                         m.is_from_me,
                         h.id,
-                        m.service
+                        m.service,
+                        m.date_read
                     FROM message m
                     \(chatId != nil ? "JOIN chat_message_join cmj ON m.ROWID = cmj.message_id" : "")
                     \(chatId != nil ? "JOIN chat c ON cmj.chat_id = c.ROWID" : "")
@@ -287,6 +288,11 @@ public final class Database {
                 let date = Date(
                     nanosecondsSinceReferenceDate: sqlite3_column_int64(statement, 3))
                 let isFromMe = sqlite3_column_int(statement, 4) != 0
+                let rawReadAt = sqlite3_column_int64(statement, 7)
+                let readAt =
+                    rawReadAt == 0
+                    ? nil
+                    : Date(nanosecondsSinceReferenceDate: rawReadAt)
 
                 let senderText = sqlite3_column_text(statement, 5)
                 let sender = senderText.map { Account.Handle(rawValue: String(cString: $0)) }
@@ -296,6 +302,7 @@ public final class Database {
                     text: text,
                     date: date,
                     isFromMe: isFromMe,
+                    readAt: readAt,
                     sender: sender
                 )
             }

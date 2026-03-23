@@ -2,13 +2,13 @@ import Foundation
 import SQLite3
 import Testing
 
-@testable import iMessage
 @testable import TypedStream
+@testable import iMessage
 
 @Suite(.serialized)
 struct DatabaseTests {
     var db: Database = Fixtures.testDatabase
-    
+
     @Test
     func testDatabaseNotFound() async throws {
         do {
@@ -72,12 +72,18 @@ struct DatabaseTests {
 
         #expect(chatMessages[0].id.rawValue == "msg-guid-1")
         #expect(chatMessages[0].text == "Hello!")
+        #expect(chatMessages[0].readAt == nil)
+        #expect(chatMessages[0].isRead == false)
 
         #expect(chatMessages[1].id.rawValue == "msg-guid-2")
         #expect(chatMessages[1].text == "Hi there")
+        #expect(chatMessages[1].readAt != nil)
+        #expect(chatMessages[1].isRead == true)
 
         #expect(chatMessages[2].id.rawValue == "msg-guid-3")
         #expect(chatMessages[2].text == "Hello")
+        #expect(chatMessages[2].readAt != nil)
+        #expect(chatMessages[2].isRead == true)
 
         // Test fetch by participants
         let participants: Set<Account.Handle> = [
@@ -109,6 +115,8 @@ struct DatabaseTests {
         #expect(messages[0].id.rawValue == "msg-guid-1")
         #expect(messages[0].text == "Hello!")
         #expect(messages[0].isFromMe == false)
+        #expect(messages[0].isRead == false)
+        #expect(messages[0].readAt == nil)
         #expect(messages[0].sender?.rawValue == "+1234567890")
 
         // Test with date range
