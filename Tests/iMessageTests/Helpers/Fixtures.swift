@@ -1,5 +1,6 @@
 import Foundation
 import SQLite3
+
 @testable import iMessage
 
 enum Fixtures {
@@ -52,7 +53,7 @@ enum Fixtures {
         "849B9C9D9D00",  // Attribute value data
         "868686",  // End markers
     ].joined()
-    
+
     static var testDatabase: Database {
         let db = try! Database.inMemory()
 
@@ -80,6 +81,7 @@ enum Fixtures {
                     handle_id INTEGER REFERENCES handle(ROWID),
                     date REAL,
                     is_from_me INTEGER,
+                    date_read REAL,
                     service TEXT
                 );
                 
@@ -131,15 +133,15 @@ enum Fixtures {
 
         try! db.execute(
             """
-                INSERT INTO message (ROWID, guid, text, attributedBody, handle_id, date, is_from_me, service)
+                INSERT INTO message (ROWID, guid, text, attributedBody, handle_id, date, is_from_me, date_read, service)
                 VALUES 
                     -- Messages for first chat
-                    (1, 'msg-guid-1', 'Hello!', NULL, 1, \(oneHourAgo.nanosecondsSinceReferenceDate ?? 0), 0, 'iMessage'),
-                    (2, 'msg-guid-2', 'Hi there', NULL, NULL, \(thirtyMinutesAgo.nanosecondsSinceReferenceDate ?? 0), 1, 'iMessage'),
-                    (3, 'msg-guid-3', NULL, X'\(Fixtures.attributedBody)', 2, \(now.nanosecondsSinceReferenceDate ?? 0), 0, 'iMessage'),
+                    (1, 'msg-guid-1', 'Hello!', NULL, 1, \(oneHourAgo.nanosecondsSinceReferenceDate ?? 0), 0, 0, 'iMessage'),
+                    (2, 'msg-guid-2', 'Hi there', NULL, NULL, \(thirtyMinutesAgo.nanosecondsSinceReferenceDate ?? 0), 1, \(now.nanosecondsSinceReferenceDate ?? 0), 'iMessage'),
+                    (3, 'msg-guid-3', NULL, X'\(Fixtures.attributedBody)', 2, \(now.nanosecondsSinceReferenceDate ?? 0), 0, \(now.nanosecondsSinceReferenceDate ?? 0), 'iMessage'),
                     -- Messages for second chat (older)
-                    (4, 'msg-guid-4', 'Old message', NULL, 1, \(twoDaysAgo.nanosecondsSinceReferenceDate ?? 0), 0, 'iMessage'),
-                    (5, 'msg-guid-5', 'Another old one', NULL, 3, \(twoDaysAndOneHourAgo.nanosecondsSinceReferenceDate ?? 0), 0, 'iMessage');
+                    (4, 'msg-guid-4', 'Old message', NULL, 1, \(twoDaysAgo.nanosecondsSinceReferenceDate ?? 0), 0, 0, 'iMessage'),
+                    (5, 'msg-guid-5', 'Another old one', NULL, 3, \(twoDaysAndOneHourAgo.nanosecondsSinceReferenceDate ?? 0), 0, \(oneHourAgo.nanosecondsSinceReferenceDate ?? 0), 'iMessage');
             """)
 
         // Link messages to chats

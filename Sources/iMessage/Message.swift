@@ -5,7 +5,12 @@ public struct Message: Identifiable, Hashable, Codable, Sendable {
     public let text: String
     public let date: Date
     public let isFromMe: Bool
+    public let readAt: Date?
     public let sender: Account.Handle?
+
+    public var isRead: Bool {
+        readAt != nil
+    }
 }
 
 // MARK: - Comparable
