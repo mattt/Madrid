@@ -20,7 +20,7 @@ public enum TypedStreamDecoderError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .outOfBounds(let index, let length):
-            return String(format: "Index %x is outside of range %x!", index, length)
+            return "Index \(String(index, radix: 16)) is outside of range \(String(length, radix: 16))!"
         case .invalidHeader:
             return "Invalid typedstream header!"
         case .sliceError(let error):
@@ -30,7 +30,7 @@ public enum TypedStreamDecoderError: Error, LocalizedError {
         case .invalidArray:
             return "Failed to parse array data"
         case .invalidPointer(let value):
-            return String(format: "Failed to parse pointer: %x", value)
+            return "Failed to parse pointer: \(String(value, radix: 16))"
         }
     }
 }
@@ -313,10 +313,13 @@ public final class TypedStreamDecoder {
     private func readPointer() throws -> UInt32 {
         let pointer = try getCurrentByte()
         idx += 1
-        guard let result = UInt32(exactly: pointer &- UInt8(REFERENCE_TAG)) else {
+        let referenceTag = UInt8(REFERENCE_TAG)
+        // typedstream references are encoded in a signed byte domain:
+        // valid reference bytes are [0x92...0xFF] and [0x00...0x7F].
+        guard pointer < 0x80 || pointer >= referenceTag else {
             throw TypedStreamDecoderError.invalidPointer(pointer)
         }
-        return result
+        return UInt32(pointer &- referenceTag)
     }
 
     /// Parses a class declaration or reference.

@@ -161,7 +161,7 @@ struct DecodingTests {
         struct TestError: Error, CustomStringConvertible { var description: String { "test error" } }
         let testError = TestError()
 
-        #expect(TypedStreamDecoderError.outOfBounds(index: 10, length: 5).errorDescription == "Index a is outside of range 5!")
+        #expect(TypedStreamDecoderError.outOfBounds(index: 0xA, length: 5).errorDescription == "Index a is outside of range 5!")
         #expect(TypedStreamDecoderError.invalidHeader.errorDescription == "Invalid typedstream header!")
         #expect(TypedStreamDecoderError.sliceError(testError).errorDescription == "Unable to slice source stream: test error")
         #expect(TypedStreamDecoderError.stringParseError(testError).errorDescription == "Failed to parse string: test error")
