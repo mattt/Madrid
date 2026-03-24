@@ -1,43 +1,52 @@
 import Foundation
 
-/// Contains logic and data used to deserialize data from a `typedstream`.
+/// Errors that can occur when parsing `typedstream` data.
 ///
-/// `typedstream` is a binary serialization format developed by NeXT and later adopted by Apple.
-/// It's designed to serialize and deserialize complex object graphs and data structures in C and Objective-C.
-///
-/// A `typedstream` begins with a header that includes format version and architecture information,
-/// followed by a stream of typed data elements. Each element is prefixed with type information,
-/// allowing the `TypedStreamDecoder` to understand the original data structures.
-public final class TypedStreamDecoder {
-    /// Errors that can happen when parsing `typedstream` data.
-    /// This corresponds to the new `typedstream` deserializer.
-    enum Error: Swift.Error, CustomStringConvertible {
-        case outOfBounds(index: Int, length: Int)
-        case invalidHeader
-        case sliceError(Swift.Error)
-        case stringParseError(Swift.Error)
-        case invalidArray
-        case invalidPointer(UInt8)
+/// This corresponds to the new `typedstream` deserializer.
+public enum TypedStreamDecoderError: Error, LocalizedError {
+    /// Read or slice operation exceeded the stream bounds.
+    case outOfBounds(index: Int, length: Int)
+    /// The stream header is missing, malformed, or unsupported.
+    case invalidHeader
+    /// Failed to slice the source stream.
+    case sliceError(Swift.Error)
+    /// Failed to decode string data as UTF-8.
+    case stringParseError(Swift.Error)
+    /// Array type declaration could not be parsed.
+    case invalidArray
+    /// Type reference pointer is invalid or out of range.
+    case invalidPointer(UInt8)
 
-        var description: String {
-            switch self {
-            case .outOfBounds(let index, let length):
-                return String(format: "Index %x is outside of range %x!", index, length)
-            case .invalidHeader:
-                return "Invalid typedstream header!"
-            case .sliceError(let error):
-                return "Unable to slice source stream: \(error)"
-            case .stringParseError(let error):
-                return "Failed to parse string: \(error)"
-            case .invalidArray:
-                return "Failed to parse array data"
-            case .invalidPointer(let value):
-                return String(format: "Failed to parse pointer: %x", value)
-            }
+    public var errorDescription: String? {
+        switch self {
+        case .outOfBounds(let index, let length):
+            return "Index \(String(index, radix: 16)) is outside of range \(String(length, radix: 16))!"
+        case .invalidHeader:
+            return "Invalid typedstream header!"
+        case .sliceError(let error):
+            return "Unable to slice source stream: \(error)"
+        case .stringParseError(let error):
+            return "Failed to parse string: \(error)"
+        case .invalidArray:
+            return "Failed to parse array data"
+        case .invalidPointer(let value):
+            return "Failed to parse pointer: \(String(value, radix: 16))"
         }
     }
+}
 
-    /// Represents data that results from attempting to parse a class from the `typedstream`
+/// Deserializes data from the NeXT/Apple `typedstream` binary format.
+///
+/// `typedstream` is designed to serialize and deserialize complex object graphs
+/// and data structures in C and Objective-C. A stream begins with a header
+/// (format version and architecture), followed by typed data elements
+/// prefixed with type information.
+///
+/// Use `decode(_:)` to parse `Data` into an array of `Archivable` values.
+/// `typedstream` data does not include property names;
+/// values are stored in order of appearance.
+public final class TypedStreamDecoder {
+    /// Result of parsing a class: either a reference index or a new hierarchy.
     private enum ClassResult {
         /// A reference to an already-seen class in the `TypedStreamReader`'s object table
         case index(Int)
@@ -82,10 +91,11 @@ public final class TypedStreamDecoder {
 
     // MARK: - Static Methods
 
-    /// Decode typedstream data into an array of Archivable objects
-    /// - Parameter data: The data to decode
-    /// - Returns: An array of decoded Archivable objects
-    /// - Throws: An error when parsing fails or the stream is malformed.
+    /// Decodes `typedstream` data into an array of `Archivable` values.
+    ///
+    /// - Parameter data: The `typedstream` bytes to decode.
+    /// - Returns: An array of decoded values in stream order.
+    /// - Throws: `TypedStreamDecoderError` when the stream is malformed or parsing fails.
     public static func decode(_ data: Data) throws -> [Archivable] {
         let bytes = [UInt8](data)
         let decoder = TypedStreamDecoder(stream: bytes)
@@ -94,7 +104,7 @@ public final class TypedStreamDecoder {
 
     // MARK: - Initialization
 
-    /// Initialize the decoder with a stream of bytes
+    /// Creates a decoder for the given byte stream.
     init(stream: [UInt8]) {
         self.stream = stream
         self.idx = 0
@@ -106,15 +116,13 @@ public final class TypedStreamDecoder {
 
     // MARK: - Methods
 
-    /// Attempt to get the data from the `typedstream`.
+    /// Parses the stream and returns decoded `Archivable` values in order.
     ///
-    /// Given a stream, construct a decoder object to parse it. `typedstream` data doesn't include property
-    /// names, so data is stored on `object`s in order of appearance.
+    /// Does not retain object inheritance hierarchy; callers assemble the
+    /// flat result into the desired structure.
     ///
-    /// Yields a new `Archivable` as they occur in the stream, but does not retain the object's inheritance hierarchy.
-    /// Callers are responsible for assembling the deserialized stream into a useful data structure.
-    ///
-    /// - Returns: An array of `Archivable` objects parsed from the stream.
+    /// - Returns: An array of values parsed from the stream.
+    /// - Throws: `TypedStreamDecoderError` when parsing fails.
     func parse() throws -> [Archivable] {
         var output: [Archivable] = []
 
@@ -136,7 +144,7 @@ public final class TypedStreamDecoder {
         return output
     }
 
-    /// Validate the `typedstream` header to ensure correct format
+    /// Validates the stream header (version, signature, system version).
     private func validateHeader() throws {
         // Encoding type
         let typedstreamVersion = try readUnsignedInt()
@@ -146,12 +154,11 @@ public final class TypedStreamDecoder {
         let systemVersion = try readSignedInt()
 
         if typedstreamVersion != 4 || signature != "streamtyped" || systemVersion != 1000 {
-            throw Error.invalidHeader
+            throw TypedStreamDecoderError.invalidHeader
         }
     }
 
-    /// Read a signed integer from the stream.
-    /// Because we don't know the size of the integer ahead of time, we store it in the largest possible value.
+    /// Reads a signed integer; size is inferred from stream type markers.
     private func readSignedInt() throws -> Int64 {
         switch try getCurrentByte() {
         case I_16:
@@ -181,8 +188,7 @@ public final class TypedStreamDecoder {
         }
     }
 
-    /// Read an unsigned integer from the stream.
-    /// Because we don't know the size of the integer ahead of time, we store it in the largest possible value.
+    /// Reads an unsigned integer; size is inferred from stream type markers.
     private func readUnsignedInt() throws -> UInt64 {
         switch try getCurrentByte() {
         case I_16:
@@ -204,7 +210,7 @@ public final class TypedStreamDecoder {
         }
     }
 
-    /// Read a single-precision float from the byte stream
+    /// Reads a 32-bit float from the stream.
     private func readFloat() throws -> Float {
         switch try getCurrentByte() {
         case DECIMAL:
@@ -242,50 +248,50 @@ public final class TypedStreamDecoder {
         }
     }
 
-    /// Read exactly `size` bytes from the stream
+    /// Reads exactly `size` bytes and advances the index.
     private func readExactBytes(size: Int) throws -> Data {
         guard idx + size <= stream.count else {
-            throw Error.outOfBounds(index: idx + size, length: stream.count)
+            throw TypedStreamDecoderError.outOfBounds(index: idx + size, length: stream.count)
         }
         let data = Data(stream[idx ..< (idx + size)])
         idx += size
         return data
     }
 
-    /// Read `size` bytes as a String
+    /// Reads `length` bytes and decodes them as UTF-8.
     private func readExactAsString(length: Int) throws -> String {
         let bytes = try readExactBytes(size: length)
         guard let string = String(data: bytes, encoding: .utf8) else {
-            throw Error.stringParseError(NSError(domain: "Invalid UTF-8", code: 0))
+            throw TypedStreamDecoderError.stringParseError(NSError(domain: "Invalid UTF-8", code: 0))
         }
         return string
     }
 
-    /// Get the byte at a given index, if the index is within the bounds of the `typedstream`
+    /// Returns the byte at the given index.
     private func getByte(at index: Int) throws -> UInt8 {
         guard index < stream.count else {
-            throw Error.outOfBounds(index: index, length: stream.count)
+            throw TypedStreamDecoderError.outOfBounds(index: index, length: stream.count)
         }
         return stream[index]
     }
 
-    /// Read the current byte
+    /// Returns the byte at the current stream index.
     private func getCurrentByte() throws -> UInt8 {
         return try getByte(at: idx)
     }
 
-    /// Read the next byte
+    /// Returns the byte immediately after the current index.
     private func getNextByte() throws -> UInt8 {
         return try getByte(at: idx + 1)
     }
 
-    /// Read some bytes as an array
+    /// Reads `size` bytes as a byte array.
     private func readArray(size: Int) throws -> [UInt8] {
         let data = try readExactBytes(size: size)
         return [UInt8](data)
     }
 
-    /// Determine the current types
+    /// Reads the type declaration for the next element.
     private func readType() throws -> [Type] {
         let length = try readUnsignedInt()
         let typesData = try readExactBytes(size: Int(length))
@@ -296,24 +302,27 @@ public final class TypedStreamDecoder {
             if let (arrayTypes, _) = Type.getArrayLength(types: typesBytes) {
                 return arrayTypes
             } else {
-                throw Error.invalidArray
+                throw TypedStreamDecoderError.invalidArray
             }
         }
 
         return typesBytes.map { Type.fromByte($0) }
     }
 
-    /// Read a reference pointer for a Type
+    /// Reads a type reference pointer from the stream.
     private func readPointer() throws -> UInt32 {
         let pointer = try getCurrentByte()
         idx += 1
-        guard let result = UInt32(exactly: pointer &- UInt8(REFERENCE_TAG)) else {
-            throw Error.invalidPointer(pointer)
+        let referenceTag = UInt8(REFERENCE_TAG)
+        // typedstream references are encoded in a signed byte domain:
+        // valid reference bytes are [0x92...0xFF] and [0x00...0x7F].
+        guard pointer < 0x80 || pointer >= referenceTag else {
+            throw TypedStreamDecoderError.invalidPointer(pointer)
         }
-        return result
+        return UInt32(pointer &- referenceTag)
     }
 
-    /// Read a class
+    /// Parses a class declaration or reference.
     private func readClass() throws -> ClassResult {
         var output: [Archivable] = []
         switch try getCurrentByte() {
@@ -348,7 +357,7 @@ public final class TypedStreamDecoder {
         return .classHierarchy(output)
     }
 
-    /// Read an object into the cache and emit, or emit an already-cached object
+    /// Reads an object from the stream or returns a cached reference.
     private func readObject() throws -> Archivable? {
         switch try getCurrentByte() {
         case START:
@@ -369,14 +378,14 @@ public final class TypedStreamDecoder {
         }
     }
 
-    /// Read String data
+    /// Reads a length-prefixed string from the stream.
     private func readString() throws -> String {
         let length = try readUnsignedInt()
         let string = try readExactAsString(length: Int(length))
         return string
     }
 
-    /// `Archivable` data can be embedded on a class or in a C String marked as `Type.embeddedData`
+    /// Reads embedded `Archivable` data (e.g. from `Type.embeddedData`).
     private func readEmbeddedData() throws -> Archivable? {
         // Skip the 0x84
         idx += 1
@@ -386,8 +395,8 @@ public final class TypedStreamDecoder {
         return nil
     }
 
-    /// Gets the current type from the stream, either by reading it from the stream or reading it from
-    /// the specified index of `typesTable`.
+    /// Returns the current type(s), from the stream or `typesTable` by reference.
+    /// - Parameter embedded: When true, records embedded types in the object table.
     private func getType(embedded: Bool) throws -> [Type]? {
         switch try getCurrentByte() {
         case START:
@@ -422,7 +431,7 @@ public final class TypedStreamDecoder {
         }
     }
 
-    /// Given some `Type`s, look at the stream and parse the data according to the specified `Type`
+    /// Parses stream data according to the given types and returns an `Archivable`.
     private func readTypes(foundTypes: [Type]) throws -> Archivable? {
         var output: [Object] = []
         var isObject = false
@@ -522,7 +531,7 @@ public final class TypedStreamDecoder {
 // MARK: -
 
 extension Array {
-    /// Safely access an array element to prevent index out of range errors
+    /// Returns the element at `index` if in bounds; otherwise `nil`.
     fileprivate subscript(safe index: Int) -> Element? {
         return indices.contains(index) ? self[index] : nil
     }
