@@ -128,4 +128,111 @@ struct DatabaseTests {
         )
         #expect(!rangeMessages.isEmpty)
     }
+
+    @Test
+    func testMessageFetchRequestSortAndPagination() async throws {
+        let request = Database.MessageFetchRequest(
+            predicate: .all,
+            sortDescriptors: [
+                .date(.ascending),
+                .id(.ascending),
+            ],
+            limit: 2,
+            offset: 1
+        )
+
+        let messages = try db.fetchMessages(request)
+        #expect(messages.count == 2)
+        #expect(messages[0].id.rawValue == "msg-guid-5")
+        #expect(messages[1].id.rawValue == "msg-guid-1")
+    }
+
+    @Test
+    func testMessagePredicateComposition() async throws {
+        let request = Database.MessageFetchRequest(
+            predicate: .or([
+                .chatID("chat-guid-2"),
+                .participantHandles(["person@example.com"]),
+            ]),
+            limit: 10
+        )
+
+        let messages = try db.fetchMessages(request)
+        let messageIDs = Set(messages.map(\.id.rawValue))
+        #expect(messageIDs == ["msg-guid-3", "msg-guid-4", "msg-guid-5"])
+    }
+
+    @Test
+    func testChatParticipantMatchModes() async throws {
+        let anyMatchRequest = Database.ChatFetchRequest(
+            predicate: .participantHandles(["+1234567890", "third@example.com"], match: .any),
+            limit: 10
+        )
+        let anyMatch = try db.fetchChats(anyMatchRequest)
+        #expect(Set(anyMatch.map(\.id.rawValue)) == ["chat-guid-1", "chat-guid-2"])
+
+        let allMatchRequest = Database.ChatFetchRequest(
+            predicate: .participantHandles(["+1234567890", "third@example.com"], match: .all),
+            limit: 10
+        )
+        let allMatch = try db.fetchChats(allMatchRequest)
+        #expect(allMatch.count == 1)
+        #expect(allMatch[0].id.rawValue == "chat-guid-2")
+    }
+
+    @Test
+    func testPredicateEmptyCompoundSemantics() async throws {
+        let allMessages = try db.fetchMessages(
+            Database.MessageFetchRequest(predicate: .and([]), limit: 10)
+        )
+        #expect(allMessages.count == 5)
+
+        let noMessages = try db.fetchMessages(
+            Database.MessageFetchRequest(predicate: .or([]), limit: 10)
+        )
+        #expect(noMessages.isEmpty)
+    }
+
+    @Test
+    func testLegacyWrappersMatchTypedRequests() async throws {
+        let legacyMessages = try db.fetchMessages(
+            for: "chat-guid-1",
+            with: ["+1234567890", "person@example.com"],
+            limit: 10
+        )
+        let requestMessages = try db.fetchMessages(
+            Database.MessageFetchRequest(
+                predicate: .and([
+                    .chatID("chat-guid-1"),
+                    .participantHandles(["+1234567890", "person@example.com"]),
+                ]),
+                limit: 10
+            )
+        )
+        #expect(legacyMessages.map(\.id) == requestMessages.map(\.id))
+
+        let legacyChats = try db.fetchChats(
+            with: ["+1234567890", "person@example.com"],
+            limit: 10
+        )
+        let requestChats = try db.fetchChats(
+            Database.ChatFetchRequest(
+                predicate: .participantHandles(["+1234567890", "person@example.com"], match: .all),
+                limit: 10
+            )
+        )
+        #expect(legacyChats.map(\.id) == requestChats.map(\.id))
+    }
+
+    @Test
+    func testInvalidPaginationThrows() async throws {
+        do {
+            _ = try db.fetchMessages(
+                Database.MessageFetchRequest(limit: -1)
+            )
+            Issue.record("Expected negative limit to throw")
+        } catch Database.Error.queryError {
+            // Expected.
+        }
+    }
 }
