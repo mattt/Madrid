@@ -130,6 +130,15 @@ struct DatabaseTests {
     }
 
     @Test
+    func testFetchWithDefaultPredicates() async throws {
+        let chats = try db.fetch(Database.ChatFetchRequest())
+        #expect(chats.count == 2)
+
+        let messages = try db.fetch(Database.MessageFetchRequest())
+        #expect(messages.count == 5)
+    }
+
+    @Test
     func testMessageFetchRequestSortAndPagination() async throws {
         let request = Database.MessageFetchRequest(
             predicate: .all,

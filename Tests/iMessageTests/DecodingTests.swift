@@ -91,4 +91,68 @@ struct DecodingTests {
         #expect(!text.contains("NSString"))
         #expect(!text.contains("NSAttributedString"))
     }
+
+    @Test
+    func testTypeGetArrayLength() {
+        #expect(Type.getArrayLength(types: []) == nil)
+        #expect(Type.getArrayLength(types: [0x40]) == nil)
+
+        let result1 = Type.getArrayLength(types: [0x5B, 0x31])
+        #expect(result1?.0 == [.array(1)])
+        #expect(result1?.1 == 2)
+
+        let result10 = Type.getArrayLength(types: [0x5B, 0x31, 0x30])
+        #expect(result10?.0 == [.array(10)])
+        #expect(result10?.1 == 3)
+
+        let result123 = Type.getArrayLength(types: [0x5B, 0x31, 0x32, 0x33])
+        #expect(result123?.0 == [.array(123)])
+        #expect(result123?.1 == 4)
+
+        #expect(Type.getArrayLength(types: [0x5B, 0x5D]) == nil)
+        #expect(Type.getArrayLength(types: [0x5B, 0x61]) == nil)
+    }
+
+    @Test
+    func testArchivableIntegerValue() throws {
+        let data = Data(hexString: Fixtures.attributedBody)!
+        let decoded = try TypedStreamDecoder.decode(data)
+
+        let nsNumberMinusOne = decoded[3]
+        #expect(nsNumberMinusOne.integerValue == -1)
+
+        let nsNumberZero = decoded[5]
+        #expect(nsNumberZero.integerValue == 0)
+
+        let nsString = decoded[0]
+        #expect(nsString.integerValue == nil)
+    }
+
+    @Test
+    func testArchivableDoubleValue() {
+        let nsNumber = Archivable.object(
+            Class(name: "NSNumber", version: 0),
+            [.double(100.001)]
+        )
+        #expect(nsNumber.doubleValue == 100.001)
+
+        let nsString = Archivable.object(
+            Class(name: "NSString", version: 1),
+            [.string("Hello")]
+        )
+        #expect(nsString.doubleValue == nil)
+
+        let nsNumberWithInt = Archivable.object(
+            Class(name: "NSNumber", version: 0),
+            [.signedInteger(42)]
+        )
+        #expect(nsNumberWithInt.doubleValue == nil)
+    }
+
+    @Test
+    func testDataHexStringInvalidReturnsNil() {
+        #expect(Data(hexString: "0g") == nil)
+        #expect(Data(hexString: "GG") == nil)
+        #expect(Data(hexString: "") != nil)
+    }
 }
