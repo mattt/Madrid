@@ -436,6 +436,7 @@ public final class Database {
         _ predicates: [MessagePredicate],
         joiner: String
     ) throws -> CompiledPredicate {
+        let isOR = joiner == "OR"
         var whereParts: [String] = []
         var parameters: [any Bindable] = []
         var requiresChatJoin = false
@@ -445,6 +446,9 @@ public final class Database {
             if let whereClause = compiled.whereClause {
                 whereParts.append("(\(whereClause))")
                 parameters.append(contentsOf: compiled.parameters)
+            } else if isOR {
+                // OR with a match-all branch is itself match-all.
+                return CompiledPredicate(whereClause: nil, parameters: [], requiresChatJoin: false)
             }
             requiresChatJoin = requiresChatJoin || compiled.requiresChatJoin
         }
@@ -544,6 +548,7 @@ public final class Database {
         _ predicates: [ChatPredicate],
         joiner: String
     ) throws -> CompiledPredicate {
+        let isOR = joiner == "OR"
         var whereParts: [String] = []
         var parameters: [any Bindable] = []
 
@@ -552,6 +557,9 @@ public final class Database {
             if let whereClause = compiled.whereClause {
                 whereParts.append("(\(whereClause))")
                 parameters.append(contentsOf: compiled.parameters)
+            } else if isOR {
+                // OR with a match-all branch is itself match-all.
+                return CompiledPredicate(whereClause: nil, parameters: [], requiresChatJoin: false)
             }
         }
 
