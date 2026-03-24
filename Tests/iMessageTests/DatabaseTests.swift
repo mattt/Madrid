@@ -128,4 +128,189 @@ struct DatabaseTests {
         )
         #expect(!rangeMessages.isEmpty)
     }
+
+    @Test
+    func testMessageFetchRequestSortAndPagination() async throws {
+        let request = Database.MessageFetchRequest(
+            predicate: .all,
+            sortDescriptors: [
+                .date(.ascending),
+                .id(.ascending),
+            ],
+            limit: 2,
+            offset: 1
+        )
+
+        let messages = try db.fetch(request)
+        #expect(messages.count == 2)
+        #expect(messages[0].id.rawValue == "msg-guid-5")
+        #expect(messages[1].id.rawValue == "msg-guid-1")
+    }
+
+    @Test
+    func testMessagePredicateComposition() async throws {
+        let request = Database.MessageFetchRequest(
+            predicate: .or([
+                .chatID("chat-guid-2"),
+                .participantHandles(["person@example.com"]),
+            ]),
+            limit: 10
+        )
+
+        let messages = try db.fetch(request)
+        let messageIDs = Set(messages.map(\.id.rawValue))
+        #expect(messageIDs == ["msg-guid-3", "msg-guid-4", "msg-guid-5"])
+    }
+
+    @Test
+    func testChatParticipantMatchModes() async throws {
+        let anyMatchRequest = Database.ChatFetchRequest(
+            predicate: .participantHandles(["+1234567890", "third@example.com"], match: .any),
+            limit: 10
+        )
+        let anyMatch = try db.fetch(anyMatchRequest)
+        #expect(Set(anyMatch.map(\.id.rawValue)) == ["chat-guid-1", "chat-guid-2"])
+
+        let allMatchRequest = Database.ChatFetchRequest(
+            predicate: .participantHandles(["+1234567890", "third@example.com"], match: .all),
+            limit: 10
+        )
+        let allMatch = try db.fetch(allMatchRequest)
+        #expect(allMatch.count == 1)
+        #expect(allMatch[0].id.rawValue == "chat-guid-2")
+    }
+
+    @Test
+    func testPredicateEmptyCompoundSemantics() async throws {
+        let allMessages = try db.fetch(
+            Database.MessageFetchRequest(predicate: .and([]), limit: 10)
+        )
+        #expect(allMessages.count == 5)
+
+        let noMessages = try db.fetch(
+            Database.MessageFetchRequest(predicate: .or([]), limit: 10)
+        )
+        #expect(noMessages.isEmpty)
+
+        let orWithAllMessages = try db.fetch(
+            Database.MessageFetchRequest(
+                predicate: .or([
+                    .all,
+                    .chatID("chat-guid-1"),
+                ]),
+                limit: 10
+            )
+        )
+        #expect(orWithAllMessages.count == 5)
+
+        let orWithAllChats = try db.fetch(
+            Database.ChatFetchRequest(
+                predicate: .or([
+                    .all,
+                    .participantHandles(["nonexistent@example.com"], match: .all),
+                ]),
+                limit: 10
+            )
+        )
+        #expect(orWithAllChats.count == 2)
+
+        let nestedOrWithAllMessages = try db.fetch(
+            Database.MessageFetchRequest(
+                predicate: .or([
+                    .and([]),
+                    .chatID("chat-guid-1"),
+                ]),
+                limit: 10
+            )
+        )
+        #expect(nestedOrWithAllMessages.count == 5)
+
+        let nestedOrWithAllChats = try db.fetch(
+            Database.ChatFetchRequest(
+                predicate: .or([
+                    .and([.all]),
+                    .none,
+                ]),
+                limit: 10
+            )
+        )
+        #expect(nestedOrWithAllChats.count == 2)
+    }
+
+    @Test
+    func testOrWithMatchAllDoesNotDuplicateMessagesFromChatJoinRows() async throws {
+        // Create a duplicate chat join row for one message.
+        try db.execute(
+            """
+                INSERT INTO chat_message_join (chat_id, message_id)
+                VALUES (2, 1);
+            """
+        )
+
+        let allMessages = try db.fetch(
+            Database.MessageFetchRequest(
+                predicate: .all,
+                sortDescriptors: [.id(.ascending)],
+                limit: 20
+            )
+        )
+        #expect(allMessages.count == 5)
+
+        let orWithAll = try db.fetch(
+            Database.MessageFetchRequest(
+                predicate: .or([
+                    .all,
+                    .chatID("chat-guid-1"),
+                ]),
+                sortDescriptors: [.id(.ascending)],
+                limit: 20
+            )
+        )
+
+        #expect(orWithAll.count == 5)
+        #expect(Set(orWithAll.map(\.id)) == Set(allMessages.map(\.id)))
+    }
+
+    @Test
+    func testLegacyWrappersMatchTypedRequests() async throws {
+        let legacyMessages = try db.fetchMessages(
+            for: "chat-guid-1",
+            with: ["+1234567890", "person@example.com"],
+            limit: 10
+        )
+        let requestMessages = try db.fetch(
+            Database.MessageFetchRequest(
+                predicate: .and([
+                    .chatID("chat-guid-1"),
+                    .participantHandles(["+1234567890", "person@example.com"]),
+                ]),
+                limit: 10
+            )
+        )
+        #expect(legacyMessages.map(\.id) == requestMessages.map(\.id))
+
+        let legacyChats = try db.fetchChats(
+            with: ["+1234567890", "person@example.com"],
+            limit: 10
+        )
+        let requestChats = try db.fetch(
+            Database.ChatFetchRequest(
+                predicate: .participantHandles(["+1234567890", "person@example.com"], match: .all),
+                limit: 10
+            )
+        )
+        #expect(legacyChats.map(\.id) == requestChats.map(\.id))
+    }
+
+    @Test
+    func testInvalidPaginationThrows() async throws {
+        do {
+            _ = try db.fetch(
+                Database.MessageFetchRequest(limit: -1)
+            )
+            Issue.record("Expected negative limit to throw")
+        } catch Database.Error.queryError {
+            // Expected.
+        }
+    }
 }

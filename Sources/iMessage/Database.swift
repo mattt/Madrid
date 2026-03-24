@@ -58,6 +58,11 @@ public final class Database {
         case queryError(String)
     }
 
+    /// Backward-compatible alias for a message fetch request.
+    public typealias MessageFetchRequest = FetchRequest<Message>
+    /// Backward-compatible alias for a chat fetch request.
+    public typealias ChatFetchRequest = FetchRequest<Chat>
+
     private init(
         _ filename: String,
         flags: Flags = .default
@@ -132,60 +137,24 @@ public final class Database {
         return results
     }
 
-    /// Fetches chats, optionally filtered by participants and date range.
+    /// Fetches chats using a predicate-style request.
     ///
-    /// - Parameters:
-    ///   - participantHandles: An optional set of handles that must be present in the chat.
-    ///   - dateRange: An optional date range used to filter chat activity.
-    ///   - limit: The maximum number of chats to return.
-    /// - Returns: Chats ordered by most recent message date, descending.
+    /// - Parameter request: The typed chat fetch request.
+    /// - Returns: Chats matching the predicate and sort descriptors.
     /// - Throws: ``Error/queryError(_:)`` when SQL preparation or execution fails.
-    public func fetchChats(
-        with participantHandles: Set<Account.Handle>? = nil,
-        in dateRange: Range<Date>? = nil,
-        limit: Int = 100
-    ) throws -> [Chat] {
-        try withTransaction {
-            var conditions: [String] = []
-            var parameters: [any Bindable] = []
+    public func fetch(_ request: ChatFetchRequest) throws -> [Chat] {
+        try validatePagination(limit: request.limit, offset: request.offset)
 
-            // Add date range if specified
-            if let dateRange = dateRange {
-                if let upperBound = dateRange.upperBound.nanosecondsSinceReferenceDate {
-                    conditions.append("m.date < ?")
-                    parameters.append(Int64(upperBound))
-                }
-                if let lowerBound = dateRange.lowerBound.nanosecondsSinceReferenceDate {
-                    conditions.append("m.date >= ?")
-                    parameters.append(Int64(lowerBound))
-                }
-            }
+        return try withTransaction {
+            let compiledPredicate = try compileChatPredicate(request.predicate)
+            let orderByClause = chatOrderByClause(request.sortDescriptors)
 
-            // Add participants filter if specified
-            if let handles = participantHandles, !handles.isEmpty {
-                conditions.append(
-                    """
-                        c.ROWID IN (
-                            SELECT chat_id 
-                            FROM chat_handle_join chj
-                            JOIN handle h ON chj.handle_id = h.ROWID
-                            WHERE h.id IN (\(String(repeating: "?,", count: handles.count).dropLast()))
-                            GROUP BY chat_id
-                            HAVING COUNT(DISTINCT handle_id) = ?
-                        )
-                    """
-                )
-
-                // Add each participant as a value
-                handles.forEach { handle in
-                    parameters.append(handle.rawValue)
-                }
-                // Add the count of participants
-                parameters.append(Int32(handles.count))
-            }
+            var parameters = compiledPredicate.parameters
+            parameters.append(try bindableInt32(request.limit, name: "limit"))
+            parameters.append(try bindableInt32(request.offset, name: "offset"))
 
             let query = """
-                    SELECT 
+                    SELECT
                         c.guid,
                         c.display_name,
                         c.service_name,
@@ -193,25 +162,24 @@ public final class Database {
                     FROM chat c
                     LEFT JOIN chat_message_join cmj ON c.ROWID = cmj.chat_id
                     LEFT JOIN message m ON cmj.message_id = m.ROWID
-                    \(conditions.isEmpty ? "" : "WHERE \(conditions.joined(separator: " AND "))")
+                    \(compiledPredicate.whereClause.map { "WHERE \($0)" } ?? "")
                     GROUP BY c.ROWID
-                    ORDER BY last_message_date DESC
+                    ORDER BY \(orderByClause)
                     LIMIT ?
+                    OFFSET ?
                 """
 
-            parameters.append(Int32(limit))
-
             return try execute(query, parameters: parameters) { statement in
-                // Safely handle potentially null columns
                 guard let guidText = sqlite3_column_text(statement, 0) else { return nil }
                 let chatId = Chat.ID(rawValue: String(cString: guidText))
 
                 let displayName = sqlite3_column_text(statement, 1).map { String(cString: $0) }
-                let lastMessageDate = Date(
-                    nanosecondsSinceReferenceDate: sqlite3_column_int64(statement, 3)
-                )
+                let rawLastMessageDate = sqlite3_column_int64(statement, 3)
+                let lastMessageDate =
+                    sqlite3_column_type(statement, 3) == SQLITE_NULL
+                    ? nil
+                    : Date(nanosecondsSinceReferenceDate: rawLastMessageDate)
 
-                // Fetch participants for this chat
                 let participants = try fetchParticipants(for: chatId)
 
                 return Chat(
@@ -224,64 +192,63 @@ public final class Database {
         }
     }
 
-    /// Fetches messages, optionally filtered by chat, participants, and date range.
+    @available(*, deprecated, message: "Use fetch(_:) with a ChatFetchRequest.")
+    public func fetchChats(_ request: ChatFetchRequest) throws -> [Chat] {
+        try fetch(request)
+    }
+
+    /// Fetches chats, optionally filtered by participants and date range.
     ///
     /// - Parameters:
-    ///   - chatId: An optional chat identifier to scope the query.
-    ///   - participantHandles: An optional set of sender handles to include.
-    ///   - dateRange: An optional date range used to filter message dates.
-    ///   - limit: The maximum number of messages to return.
-    /// - Returns: Messages ordered by message date, descending.
+    ///   - participantHandles: An optional set of handles that must be present in the chat.
+    ///   - dateRange: An optional date range used to filter chat activity.
+    ///   - limit: The maximum number of chats to return.
+    /// - Returns: Chats ordered by most recent message date, descending.
     /// - Throws: ``Error/queryError(_:)`` when SQL preparation or execution fails.
-    public func fetchMessages(
-        for chatId: Chat.ID? = nil,
+    @available(
+        *,
+        deprecated,
+        message: "Use fetch(_:) with a ChatFetchRequest predicate instead."
+    )
+    public func fetchChats(
         with participantHandles: Set<Account.Handle>? = nil,
         in dateRange: Range<Date>? = nil,
         limit: Int = 100
-    ) throws -> [Message] {
-        try withTransaction {
-            var conditions: [String] = []
-            var parameters: [any Bindable] = []
+    ) throws -> [Chat] {
+        var predicates: [ChatPredicate] = []
+        if let participantHandles = participantHandles, !participantHandles.isEmpty {
+            predicates.append(.participantHandles(participantHandles, match: .all))
+        }
+        if let dateRange = dateRange {
+            predicates.append(.dateRange(dateRange))
+        }
 
-            // Add chat filter if specified
-            if let chatId = chatId {
-                conditions.append("c.guid = ?")
-                parameters.append(chatId.rawValue)
-            }
+        return try fetch(
+            ChatFetchRequest(
+                predicate: .and(predicates),
+                limit: limit
+            )
+        )
+    }
 
-            // Add participants filter if specified
-            if let handles = participantHandles, !handles.isEmpty {
-                conditions.append(
-                    """
-                        m.ROWID IN (
-                            SELECT m.ROWID
-                            FROM message m
-                            JOIN handle h ON m.handle_id = h.ROWID
-                            WHERE h.id IN (\(String(repeating: "?,", count: handles.count).dropLast()))
-                        )
-                    """
-                )
+    /// Fetches messages using a predicate-style request.
+    ///
+    /// - Parameter request: The typed message fetch request.
+    /// - Returns: Messages matching the predicate and sort descriptors.
+    /// - Throws: ``Error/queryError(_:)`` when SQL preparation or execution fails.
+    public func fetch(_ request: MessageFetchRequest) throws -> [Message] {
+        try validatePagination(limit: request.limit, offset: request.offset)
 
-                // Add each participant as a value
-                handles.forEach { handle in
-                    parameters.append(handle.rawValue)
-                }
-            }
+        return try withTransaction {
+            let compiledPredicate = try compileMessagePredicate(request.predicate)
+            let orderByClause = messageOrderByClause(request.sortDescriptors)
 
-            // Add date range if specified
-            if let dateRange = dateRange {
-                if let upperBound = dateRange.upperBound.nanosecondsSinceReferenceDate {
-                    conditions.append("m.date < ?")
-                    parameters.append(upperBound)
-                }
-                if let lowerBound = dateRange.lowerBound.nanosecondsSinceReferenceDate {
-                    conditions.append("m.date >= ?")
-                    parameters.append(lowerBound)
-                }
-            }
+            var parameters = compiledPredicate.parameters
+            parameters.append(try bindableInt32(request.limit, name: "limit"))
+            parameters.append(try bindableInt32(request.offset, name: "offset"))
 
             let query = """
-                    SELECT 
+                    SELECT
                         m.guid,
                         m.text,
                         HEX(m.attributedBody),
@@ -291,15 +258,14 @@ public final class Database {
                         m.service,
                         m.date_read
                     FROM message m
-                    \(chatId != nil ? "JOIN chat_message_join cmj ON m.ROWID = cmj.message_id" : "")
-                    \(chatId != nil ? "JOIN chat c ON cmj.chat_id = c.ROWID" : "")
+                    \(compiledPredicate.requiresChatJoin ? "JOIN chat_message_join cmj ON m.ROWID = cmj.message_id" : "")
+                    \(compiledPredicate.requiresChatJoin ? "JOIN chat c ON cmj.chat_id = c.ROWID" : "")
                     LEFT JOIN handle h ON m.handle_id = h.ROWID
-                    \(conditions.isEmpty ? "" : "WHERE \(conditions.joined(separator: " AND "))")
-                    ORDER BY m.date DESC
+                    \(compiledPredicate.whereClause.map { "WHERE \($0)" } ?? "")
+                    ORDER BY \(orderByClause)
                     LIMIT ?
+                    OFFSET ?
                 """
-
-            parameters.append(Int32(limit))
 
             return try execute(query, parameters: parameters) { statement in
                 let messageID: Message.ID
@@ -307,10 +273,8 @@ public final class Database {
                     messageID = Message.ID(rawValue: String(cString: messageIdText))
                 } else {
                     messageID = "N/A"
-                    // FIXME
                 }
 
-                // Handle text
                 let text: String
                 if let rawText = sqlite3_column_text(statement, 1) {
                     text = String(cString: rawText)
@@ -350,6 +314,319 @@ public final class Database {
                 )
             }
         }
+    }
+
+    @available(*, deprecated, message: "Use fetch(_:) with a MessageFetchRequest.")
+    public func fetchMessages(_ request: MessageFetchRequest) throws -> [Message] {
+        try fetch(request)
+    }
+
+    /// Fetches messages, optionally filtered by chat, participants, and date range.
+    ///
+    /// - Parameters:
+    ///   - chatId: An optional chat identifier to scope the query.
+    ///   - participantHandles: An optional set of sender handles to include.
+    ///   - dateRange: An optional date range used to filter message dates.
+    ///   - limit: The maximum number of messages to return.
+    /// - Returns: Messages ordered by message date, descending.
+    /// - Throws: ``Error/queryError(_:)`` when SQL preparation or execution fails.
+    @available(
+        *,
+        deprecated,
+        message: "Use fetch(_:) with a MessageFetchRequest predicate instead."
+    )
+    public func fetchMessages(
+        for chatId: Chat.ID? = nil,
+        with participantHandles: Set<Account.Handle>? = nil,
+        in dateRange: Range<Date>? = nil,
+        limit: Int = 100
+    ) throws -> [Message] {
+        var predicates: [MessagePredicate] = []
+        if let chatId = chatId {
+            predicates.append(.chatID(chatId))
+        }
+        if let participantHandles = participantHandles, !participantHandles.isEmpty {
+            predicates.append(.participantHandles(participantHandles))
+        }
+        if let dateRange = dateRange {
+            predicates.append(.dateRange(dateRange))
+        }
+
+        return try fetch(
+            MessageFetchRequest(
+                predicate: .and(predicates),
+                limit: limit
+            )
+        )
+    }
+
+    private struct CompiledPredicate {
+        let whereClause: String?
+        let parameters: [any Bindable]
+        let requiresChatJoin: Bool
+    }
+
+    private func compileMessagePredicate(
+        _ predicate: MessagePredicate
+    ) throws -> CompiledPredicate {
+        switch predicate {
+        case .all:
+            return CompiledPredicate(whereClause: nil, parameters: [], requiresChatJoin: false)
+        case .none:
+            return CompiledPredicate(whereClause: "1 = 0", parameters: [], requiresChatJoin: false)
+        case .chatID(let chatID):
+            return CompiledPredicate(
+                whereClause: "c.guid = ?",
+                parameters: [chatID.rawValue],
+                requiresChatJoin: true
+            )
+        case .participantHandles(let handles):
+            if handles.isEmpty {
+                return CompiledPredicate(
+                    whereClause: "1 = 0",
+                    parameters: [],
+                    requiresChatJoin: false
+                )
+            }
+            let handleValues = orderedHandleValues(handles)
+            let placeholders = placeholders(handles.count)
+            let condition = """
+                m.ROWID IN (
+                    SELECT m2.ROWID
+                    FROM message m2
+                    JOIN handle h ON m2.handle_id = h.ROWID
+                    WHERE h.id IN (\(placeholders))
+                )
+                """
+            return CompiledPredicate(
+                whereClause: condition,
+                parameters: toBindableStrings(handleValues),
+                requiresChatJoin: false
+            )
+        case .dateRange(let dateRange):
+            let upperBound = try requireNanoseconds(dateRange.upperBound, label: "upperBound")
+            let lowerBound = try requireNanoseconds(dateRange.lowerBound, label: "lowerBound")
+            return CompiledPredicate(
+                whereClause: "m.date < ? AND m.date >= ?",
+                parameters: [upperBound, lowerBound],
+                requiresChatJoin: false
+            )
+        case .and(let predicates):
+            if predicates.isEmpty {
+                return CompiledPredicate(whereClause: nil, parameters: [], requiresChatJoin: false)
+            }
+            return try combineMessagePredicates(predicates, joiner: "AND")
+        case .or(let predicates):
+            if predicates.isEmpty {
+                return CompiledPredicate(whereClause: "1 = 0", parameters: [], requiresChatJoin: false)
+            }
+            return try combineMessagePredicates(predicates, joiner: "OR")
+        case .not(let predicate):
+            let compiled = try compileMessagePredicate(predicate)
+            let whereClause = compiled.whereClause ?? "1 = 1"
+            return CompiledPredicate(
+                whereClause: "NOT (\(whereClause))",
+                parameters: compiled.parameters,
+                requiresChatJoin: compiled.requiresChatJoin
+            )
+        }
+    }
+
+    private func combineMessagePredicates(
+        _ predicates: [MessagePredicate],
+        joiner: String
+    ) throws -> CompiledPredicate {
+        let isOR = joiner == "OR"
+        var whereParts: [String] = []
+        var parameters: [any Bindable] = []
+        var requiresChatJoin = false
+
+        for predicate in predicates {
+            let compiled = try compileMessagePredicate(predicate)
+            if let whereClause = compiled.whereClause {
+                whereParts.append("(\(whereClause))")
+                parameters.append(contentsOf: compiled.parameters)
+            } else if isOR {
+                // OR with a match-all branch is itself match-all.
+                return CompiledPredicate(whereClause: nil, parameters: [], requiresChatJoin: false)
+            }
+            requiresChatJoin = requiresChatJoin || compiled.requiresChatJoin
+        }
+
+        let joinedWhereClause = whereParts.isEmpty ? nil : whereParts.joined(separator: " \(joiner) ")
+        return CompiledPredicate(
+            whereClause: joinedWhereClause,
+            parameters: parameters,
+            requiresChatJoin: requiresChatJoin
+        )
+    }
+
+    private func compileChatPredicate(
+        _ predicate: ChatPredicate
+    ) throws -> CompiledPredicate {
+        switch predicate {
+        case .all:
+            return CompiledPredicate(whereClause: nil, parameters: [], requiresChatJoin: false)
+        case .none:
+            return CompiledPredicate(whereClause: "1 = 0", parameters: [], requiresChatJoin: false)
+        case .participantHandles(let handles, let match):
+            if handles.isEmpty {
+                let whereClause = match == .all ? nil : "1 = 0"
+                return CompiledPredicate(
+                    whereClause: whereClause,
+                    parameters: [],
+                    requiresChatJoin: false
+                )
+            }
+
+            let handleValues = orderedHandleValues(handles)
+            let placeholders = placeholders(handles.count)
+            switch match {
+            case .any:
+                let condition = """
+                    c.ROWID IN (
+                        SELECT chat_id
+                        FROM chat_handle_join chj
+                        JOIN handle h ON chj.handle_id = h.ROWID
+                        WHERE h.id IN (\(placeholders))
+                    )
+                    """
+                return CompiledPredicate(
+                    whereClause: condition,
+                    parameters: toBindableStrings(handleValues),
+                    requiresChatJoin: false
+                )
+            case .all:
+                let condition = """
+                    c.ROWID IN (
+                        SELECT chat_id
+                        FROM chat_handle_join chj
+                        JOIN handle h ON chj.handle_id = h.ROWID
+                        WHERE h.id IN (\(placeholders))
+                        GROUP BY chat_id
+                        HAVING COUNT(DISTINCT handle_id) = ?
+                    )
+                    """
+                var parameters = toBindableStrings(handleValues)
+                parameters.append(try bindableInt32(handles.count, name: "participant count"))
+                return CompiledPredicate(
+                    whereClause: condition,
+                    parameters: parameters,
+                    requiresChatJoin: false
+                )
+            }
+        case .dateRange(let dateRange):
+            let upperBound = try requireNanoseconds(dateRange.upperBound, label: "upperBound")
+            let lowerBound = try requireNanoseconds(dateRange.lowerBound, label: "lowerBound")
+            return CompiledPredicate(
+                whereClause: "m.date < ? AND m.date >= ?",
+                parameters: [upperBound, lowerBound],
+                requiresChatJoin: false
+            )
+        case .and(let predicates):
+            if predicates.isEmpty {
+                return CompiledPredicate(whereClause: nil, parameters: [], requiresChatJoin: false)
+            }
+            return try combineChatPredicates(predicates, joiner: "AND")
+        case .or(let predicates):
+            if predicates.isEmpty {
+                return CompiledPredicate(whereClause: "1 = 0", parameters: [], requiresChatJoin: false)
+            }
+            return try combineChatPredicates(predicates, joiner: "OR")
+        case .not(let predicate):
+            let compiled = try compileChatPredicate(predicate)
+            let whereClause = compiled.whereClause ?? "1 = 1"
+            return CompiledPredicate(
+                whereClause: "NOT (\(whereClause))",
+                parameters: compiled.parameters,
+                requiresChatJoin: false
+            )
+        }
+    }
+
+    private func combineChatPredicates(
+        _ predicates: [ChatPredicate],
+        joiner: String
+    ) throws -> CompiledPredicate {
+        let isOR = joiner == "OR"
+        var whereParts: [String] = []
+        var parameters: [any Bindable] = []
+
+        for predicate in predicates {
+            let compiled = try compileChatPredicate(predicate)
+            if let whereClause = compiled.whereClause {
+                whereParts.append("(\(whereClause))")
+                parameters.append(contentsOf: compiled.parameters)
+            } else if isOR {
+                // OR with a match-all branch is itself match-all.
+                return CompiledPredicate(whereClause: nil, parameters: [], requiresChatJoin: false)
+            }
+        }
+
+        return CompiledPredicate(
+            whereClause: whereParts.isEmpty ? nil : whereParts.joined(separator: " \(joiner) "),
+            parameters: parameters,
+            requiresChatJoin: false
+        )
+    }
+
+    private func messageOrderByClause(_ descriptors: [MessageSortDescriptor]) -> String {
+        let descriptors = descriptors.isEmpty ? [.date(.descending), .id(.descending)] : descriptors
+        return descriptors.map { descriptor in
+            switch descriptor {
+            case .date(let order):
+                return "m.date \(order.sqlKeyword)"
+            case .id(let order):
+                return "m.guid \(order.sqlKeyword)"
+            }
+        }.joined(separator: ", ")
+    }
+
+    private func chatOrderByClause(_ descriptors: [ChatSortDescriptor]) -> String {
+        let descriptors = descriptors.isEmpty ? [.lastMessageDate(.descending), .id(.ascending)] : descriptors
+        return descriptors.map { descriptor in
+            switch descriptor {
+            case .lastMessageDate(let order):
+                return "last_message_date \(order.sqlKeyword)"
+            case .id(let order):
+                return "c.guid \(order.sqlKeyword)"
+            }
+        }.joined(separator: ", ")
+    }
+
+    private func placeholders(_ count: Int) -> String {
+        Array(repeating: "?", count: count).joined(separator: ",")
+    }
+
+    private func orderedHandleValues(_ handles: Set<Account.Handle>) -> [String] {
+        handles.map(\.rawValue).sorted()
+    }
+
+    private func toBindableStrings(_ values: [String]) -> [any Bindable] {
+        values.map { $0 as any Bindable }
+    }
+
+    private func requireNanoseconds(_ date: Date, label: String) throws -> Int64 {
+        guard let value = date.nanosecondsSinceReferenceDate else {
+            throw Error.queryError("Could not represent \(label) as Int64 nanoseconds.")
+        }
+        return value
+    }
+
+    private func validatePagination(limit: Int, offset: Int) throws {
+        guard limit >= 0 else {
+            throw Error.queryError("limit must be >= 0")
+        }
+        guard offset >= 0 else {
+            throw Error.queryError("offset must be >= 0")
+        }
+    }
+
+    private func bindableInt32(_ value: Int, name: String) throws -> Int32 {
+        guard value <= Int(Int32.max), value >= Int(Int32.min) else {
+            throw Error.queryError("\(name) is out of Int32 range.")
+        }
+        return Int32(value)
     }
 
     /// Fetches participants for a chat.
@@ -460,6 +737,15 @@ public final class Database {
 }
 
 // MARK: -
+
+private extension SortOrder {
+    var sqlKeyword: String {
+        switch self {
+        case .ascending: "ASC"
+        case .descending: "DESC"
+        }
+    }
+}
 
 private protocol Bindable {
     func bind(to statement: OpaquePointer, at index: Int32)

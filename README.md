@@ -26,7 +26,7 @@ Add Madrid as a dependency to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/mattt/Madrid.git", from: "0.2.0")
+    .package(url: "https://github.com/mattt/Madrid.git", from: "0.4.0")
 ]
 ```
 
@@ -54,24 +54,33 @@ import iMessage
 // Create a database (uses `~/Library/Messages/chat.db` by default)
 let db = try iMessage.Database()
 
-// Fetch recent messages
-let recentMessages = try db.fetchMessages(limit: 10)
+// Build a predicate-style request
+let pastWeek = Date.now.addingTimeInterval(-7 * 24 * 60 * 60) ..< Date.now
+let request = FetchRequest<Message>(
+    predicate: .and([
+        .participantHandles([
+            "johnny.appleseed@mac.com",
+            "+18002752273",
+        ]),
+        .dateRange(pastWeek),
+    ]),
+    sortDescriptors: [.date(.descending)],
+    limit: 10
+)
 
-// Fetch messages from select individuals in time range
-let pastWeek = Date.now.addingTimeInterval(-7*24*60*60)..<Date.now
-
-let aliases = [
-    "johnny.appleseed@mac.com",
-    "+18002752273"
-]
-let handles = try db.fetchParticipant(matching: aliases)
-
-for message in try db.fetchMessages(with: Set(handles), in: pastWeek) {
+// Execute request
+for message in try db.fetch(request) {
     print("From: \(message.sender)")
-    print("Content: \(message.content)")
-    print("Sent at: \(message.timestamp)")
+    print("Content: \(message.text)")
+    print("Sent at: \(message.date)")
 }
 ```
+
+> [!TIP]
+> Legacy convenience APIs
+> (`fetchMessages(for:with:in:limit:)`, `fetchChats(with:in:limit:)`)
+> are still available,
+> but are deprecated in favor of `fetch(_:)`.
 
 ### Decoding TypedStream Data
 
