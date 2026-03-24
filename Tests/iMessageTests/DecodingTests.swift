@@ -155,4 +155,17 @@ struct DecodingTests {
         #expect(Data(hexString: "GG") == nil)
         #expect(Data(hexString: "") != nil)
     }
+
+    @Test
+    func testTypedStreamDecoderErrorDescriptions() {
+        struct TestError: Error, CustomStringConvertible { var description: String { "test error" } }
+        let testError = TestError()
+
+        #expect(TypedStreamDecoderError.outOfBounds(index: 10, length: 5).errorDescription == "Index a is outside of range 5!")
+        #expect(TypedStreamDecoderError.invalidHeader.errorDescription == "Invalid typedstream header!")
+        #expect(TypedStreamDecoderError.sliceError(testError).errorDescription == "Unable to slice source stream: test error")
+        #expect(TypedStreamDecoderError.stringParseError(testError).errorDescription == "Failed to parse string: test error")
+        #expect(TypedStreamDecoderError.invalidArray.errorDescription == "Failed to parse array data")
+        #expect(TypedStreamDecoderError.invalidPointer(0xFF).errorDescription == "Failed to parse pointer: ff")
+    }
 }
