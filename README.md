@@ -95,6 +95,21 @@ print(result.stringValue)
 
 ## FAQ
 
+### Recent messages are missing
+
+Messages keeps `chat.db` in WAL mode:
+a new message is committed to `chat.db-wal`
+and only copied into `chat.db` at the next checkpoint,
+every few MB of writes — often hours later.
+`Database(path:)` reads the log when `chat.db-wal` and `chat.db-shm` are readable
+(`mode: .automatic`, the default)
+and otherwise falls back to SQLite's `immutable=1`,
+which sees the main file alone.
+`db.accessMode` tells which one you got.
+Pass `mode: .live` to get an error instead of stale data,
+or `mode: .immutable` when a sandbox grant covers only `chat.db`
+and staleness is acceptable.
+
 ### "Database Disk Image is Malformed"
 
 If you get the error message

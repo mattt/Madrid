@@ -8,6 +8,10 @@ private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.sel
 public final class Database {
     var db: OpaquePointer?
 
+    /// How the database file was opened: ``AccessMode/live`` or ``AccessMode/immutable``
+    /// (``AccessMode/automatic`` resolves to one of the two).
+    public let accessMode: AccessMode
+
     /// Defines flags used to open a SQLite database connection.
     public struct Flags: OptionSet, Sendable, Hashable {
         /// The underlying SQLite bitmask value.
@@ -58,18 +62,56 @@ public final class Database {
         case queryError(String)
     }
 
+    /// How the database file is read.
+    ///
+    /// Messages keeps `chat.db` in WAL mode: a committed message first lands in
+    /// `chat.db-wal` and only reaches `chat.db` itself when SQLite checkpoints the
+    /// log (every few MB of writes, which can take hours). Whether that log is read
+    /// decides how current the results are.
+    public enum AccessMode: Sendable, Hashable {
+        /// Reads the database together with its write-ahead log (`chat.db-wal`) and
+        /// shared-memory index (`chat.db-shm`), so every committed message is visible.
+        /// Requires read access to those companion files as well; a read-only grant
+        /// on the directory is enough.
+        case live
+        /// Opens with SQLite's `immutable=1`: the main file only, no locks, and the
+        /// write-ahead log is ignored. Works when nothing but `chat.db` itself is
+        /// readable (a sandboxed app whose user-selected grant covers that single
+        /// file), but messages written since the last checkpoint stay invisible until
+        /// the next one.
+        case immutable
+        /// ``live`` when the companion files can be read, ``immutable`` otherwise.
+        case automatic
+    }
+
     /// Backward-compatible alias for a message fetch request.
     public typealias MessageFetchRequest = FetchRequest<Message>
     /// Backward-compatible alias for a chat fetch request.
     public typealias ChatFetchRequest = FetchRequest<Chat>
 
-    private init(
-        _ filename: String,
-        flags: Flags = .default
-    ) throws {
-        if sqlite3_open_v2(filename, &db, flags.rawValue, nil) != SQLITE_OK {
-            throw Error.failedToOpen(String(cString: sqlite3_errmsg(db)))
+    private init(handle: OpaquePointer?, accessMode: AccessMode) {
+        self.db = handle
+        self.accessMode = accessMode
+    }
+
+    /// Opens a SQLite handle, closing it again when SQLite reports a failure.
+    private static func open(_ filename: String, flags: Flags) throws -> OpaquePointer? {
+        var handle: OpaquePointer?
+        guard sqlite3_open_v2(filename, &handle, flags.rawValue, nil) == SQLITE_OK else {
+            let message = String(cString: sqlite3_errmsg(handle))
+            sqlite3_close(handle)
+            throw Error.failedToOpen(message)
         }
+        // A live connection shares locks with Messages; wait briefly instead of failing.
+        sqlite3_busy_timeout(handle, 1000)
+        return handle
+    }
+
+    /// Whether a first read succeeds. On a WAL-mode file this is the moment SQLite
+    /// opens the `-wal` and `-shm` companions, so it fails when they are unreadable.
+    private static func canRead(_ handle: OpaquePointer?) -> Bool {
+        return sqlite3_exec(handle, "SELECT 1 FROM sqlite_master LIMIT 1", nil, nil, nil)
+            == SQLITE_OK
     }
 
     /// Opens the Messages database at a path.
@@ -77,10 +119,13 @@ public final class Database {
     /// When `path` is `nil`, this initializer uses the default
     /// `~/Library/Messages/chat.db` location.
     ///
-    /// - Parameter path: An optional absolute database path.
+    /// - Parameters:
+    ///   - path: An optional absolute database path.
+    ///   - mode: How the file is read; see ``AccessMode``. Defaults to
+    ///     ``AccessMode/automatic``.
     /// - Throws: ``Error/databaseNotFound`` when the file does not exist,
     ///   or ``Error/failedToOpen(_:)`` when SQLite fails to open it.
-    public convenience init(path: String? = nil) throws {
+    public convenience init(path: String? = nil, mode: AccessMode = .automatic) throws {
         let resolvedPath: String
         if let path = path {
             resolvedPath = path
@@ -92,8 +137,29 @@ public final class Database {
             throw Error.databaseNotFound
         }
 
-        let dbURI = "file:\(resolvedPath)?immutable=1&mode=ro"
-        try self.init(dbURI, flags: [.readOnly, .uri])
+        let liveURI = "file:\(resolvedPath)?mode=ro"
+        let immutableURI = "file:\(resolvedPath)?immutable=1&mode=ro"
+
+        switch mode {
+        case .live:
+            self.init(handle: try Database.open(liveURI, flags: .default), accessMode: .live)
+        case .immutable:
+            self.init(
+                handle: try Database.open(immutableURI, flags: .default),
+                accessMode: .immutable
+            )
+        case .automatic:
+            let handle = try Database.open(liveURI, flags: .default)
+            if Database.canRead(handle) {
+                self.init(handle: handle, accessMode: .live)
+            } else {
+                sqlite3_close(handle)
+                self.init(
+                    handle: try Database.open(immutableURI, flags: .default),
+                    accessMode: .immutable
+                )
+            }
+        }
     }
 
     /// Creates an in-memory database handle for tests and temporary data.
@@ -101,7 +167,10 @@ public final class Database {
     /// - Returns: A database opened at SQLite's `:memory:` location.
     /// - Throws: ``Error/failedToOpen(_:)`` when SQLite cannot create the database.
     public static func inMemory() throws -> Database {
-        return try Database(":memory:", flags: [.readWrite, .create])
+        return Database(
+            handle: try open(":memory:", flags: [.readWrite, .create]),
+            accessMode: .live
+        )
     }
 
     deinit {
