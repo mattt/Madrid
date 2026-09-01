@@ -74,6 +74,24 @@ struct AccessModeTests {
     }
 
     @Test
+    func liveReadsThroughReadOnlyCompanions() throws {
+        // A sandboxed reader gets the Messages folder read-only: SQLite must cope with a
+        // `-shm` it cannot write to.
+        let fixture = try WALFixture()
+        let attributes = [FileAttributeKey.posixPermissions: 0o444]
+        try FileManager.default.setAttributes(attributes, ofItemAtPath: fixture.path + "-wal")
+        try FileManager.default.setAttributes(attributes, ofItemAtPath: fixture.path + "-shm")
+        defer {
+            let restore = [FileAttributeKey.posixPermissions: 0o644]
+            try? FileManager.default.setAttributes(restore, ofItemAtPath: fixture.path + "-wal")
+            try? FileManager.default.setAttributes(restore, ofItemAtPath: fixture.path + "-shm")
+        }
+        let db = try Database(path: fixture.path, mode: .live)
+        #expect(db.accessMode == .live)
+        #expect(try rowCount(db) == 2)
+    }
+
+    @Test
     func automaticPrefersLiveWhenTheLogIsReadable() throws {
         let fixture = try WALFixture()
         let db = try Database(path: fixture.path)
