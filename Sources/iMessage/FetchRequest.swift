@@ -24,7 +24,9 @@ public indirect enum MessagePredicate: Sendable, Hashable {
     case none
     /// Match messages that belong to the specified chat.
     case chatID(Chat.ID)
-    /// Match messages sent by any of the provided handles.
+    /// Match messages sent by any of the provided handles,
+    /// as well as messages the current user sent
+    /// in chats that include any of the provided handles.
     case participantHandles(Set<Account.Handle>)
     /// Match messages in the half-open date range.
     case dateRange(Range<Date>)
@@ -50,6 +52,8 @@ public indirect enum ChatPredicate: Sendable, Hashable {
     case all
     /// Match no chats.
     case none
+    /// Match the chat with the specified identifier.
+    case id(Chat.ID)
     /// Match chats by participant handles using the selected mode.
     case participantHandles(Set<Account.Handle>, match: ParticipantMatch)
     /// Match chats that contain message activity in the half-open date range.

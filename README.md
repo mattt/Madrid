@@ -73,6 +73,26 @@ for message in try db.fetch(request) {
     print("From: \(message.sender)")
     print("Content: \(message.text)")
     print("Sent at: \(message.date)")
+    print("Chat: \(message.chatID)")
+}
+```
+
+> [!NOTE]
+> `participantHandles` matches messages sent by those handles
+> _and_ messages you sent in chats they take part in.
+> Messages you send from another device (iPhone, iPad)
+> are synced without a sender handle,
+> so they can only be tied to a conversation through their chat —
+> which `Message.chatID` exposes.
+
+### Fetching Chats
+
+```swift
+// Look a chat up by identifier, e.g. from a message's `chatID`
+let request = FetchRequest<Chat>(predicate: .id("iMessage;-;+18002752273"))
+if let chat = try db.fetch(request).first {
+    print("Name: \(chat.displayName ?? "-")")
+    print("Participants: \(chat.participants)")
 }
 ```
 
