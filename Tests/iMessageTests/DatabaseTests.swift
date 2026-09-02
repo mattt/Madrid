@@ -440,4 +440,20 @@ struct DatabaseTests {
             // Expected.
         }
     }
+
+    @Test("Query that fails mid-iteration throws instead of returning partial results")
+    func stepErrorMidIterationThrows() throws {
+        let db = try Database.inMemory()
+        // The second row overflows `abs`, so `sqlite3_step` returns an error
+        // after one row has already been produced.
+        let query = """
+            SELECT CASE WHEN x = 2 THEN abs(-9223372036854775808) ELSE x END
+            FROM (SELECT 1 AS x UNION ALL SELECT 2)
+            """
+        #expect(throws: Database.Error.self) {
+            try db.execute(query) { statement in
+                sqlite3_column_int64(statement, 0)
+            }
+        }
+    }
 }
