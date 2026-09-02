@@ -4,8 +4,10 @@ import Testing
 
 @testable import iMessage
 
-/// A WAL-mode database with one row checkpointed into the main file and a second row
-/// still in the write-ahead log. The writer stays open so nothing checkpoints it.
+/// A WAL-mode database with one row checkpointed into the main file
+/// and a second row still in the write-ahead log.
+/// The writer stays open
+/// so nothing checkpoints it.
 private final class WALFixture {
     let path: String
     private var writer: OpaquePointer?
@@ -75,8 +77,8 @@ struct AccessModeTests {
 
     @Test
     func liveReadsThroughReadOnlyCompanions() throws {
-        // A sandboxed reader gets the Messages folder read-only: SQLite must cope with a
-        // `-shm` it cannot write to.
+        // A sandboxed reader gets the Messages folder read-only:
+        // SQLite must cope with a `-shm` it cannot write to.
         let fixture = try WALFixture()
         let attributes = [FileAttributeKey.posixPermissions: 0o444]
         try FileManager.default.setAttributes(attributes, ofItemAtPath: fixture.path + "-wal")

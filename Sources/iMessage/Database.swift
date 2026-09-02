@@ -64,23 +64,27 @@ public final class Database {
 
     /// How the database file is read.
     ///
-    /// Messages keeps `chat.db` in WAL mode: a committed message first lands in
-    /// `chat.db-wal` and only reaches `chat.db` itself when SQLite checkpoints the
-    /// log (every few MB of writes, which can take hours). Whether that log is read
-    /// decides how current the results are.
+    /// Messages keeps `chat.db` in WAL mode:
+    /// a committed message first lands in `chat.db-wal`
+    /// and only reaches `chat.db` itself
+    /// when SQLite checkpoints the log (every few MB of writes, which can take hours).
+    /// Whether that log is read decides how current the results are.
     public enum AccessMode: Sendable, Hashable {
-        /// Reads the database together with its write-ahead log (`chat.db-wal`) and
-        /// shared-memory index (`chat.db-shm`), so every committed message is visible.
-        /// Requires read access to those companion files as well; a read-only grant
-        /// on the directory is enough.
+        /// Reads the database together with its write-ahead log (`chat.db-wal`)
+        /// and shared-memory index (`chat.db-shm`),
+        /// so every committed message is visible.
+        /// Requires read access to those companion files as well;
+        /// a read-only grant on the directory is enough.
         case live
-        /// Opens with SQLite's `immutable=1`: the main file only, no locks, and the
-        /// write-ahead log is ignored. Works when nothing but `chat.db` itself is
-        /// readable (a sandboxed app whose user-selected grant covers that single
-        /// file), but messages written since the last checkpoint stay invisible until
-        /// the next one.
+        /// Opens with SQLite's `immutable=1`:
+        /// the main file only, no locks,
+        /// and the write-ahead log is ignored.
+        /// Works when nothing but `chat.db` itself is readable
+        /// (a sandboxed app whose user-selected grant covers that single file),
+        /// but messages written since the last checkpoint stay invisible until the next one.
         case immutable
-        /// ``live`` when the companion files can be read, ``immutable`` otherwise.
+        /// ``live`` when the companion files can be read,
+        /// ``immutable`` otherwise.
         case automatic
     }
 
@@ -94,7 +98,8 @@ public final class Database {
         self.accessMode = accessMode
     }
 
-    /// Opens a SQLite handle, closing it again when SQLite reports a failure.
+    /// Opens a SQLite handle,
+    /// closing it again when SQLite reports a failure.
     private static func open(_ filename: String, flags: Flags) throws -> OpaquePointer? {
         var handle: OpaquePointer?
         guard sqlite3_open_v2(filename, &handle, flags.rawValue, nil) == SQLITE_OK else {
@@ -102,13 +107,15 @@ public final class Database {
             sqlite3_close(handle)
             throw Error.failedToOpen(message)
         }
-        // A live connection shares locks with Messages; wait briefly instead of failing.
+        // A live connection shares locks with Messages;
+        // wait briefly instead of failing.
         sqlite3_busy_timeout(handle, 1000)
         return handle
     }
 
-    /// Whether a first read succeeds. On a WAL-mode file this is the moment SQLite
-    /// opens the `-wal` and `-shm` companions, so it fails when they are unreadable.
+    /// Whether a first read succeeds.
+    /// On a WAL-mode file this is the moment SQLite opens the `-wal` and `-shm` companions,
+    /// so it fails when they are unreadable.
     private static func canRead(_ handle: OpaquePointer?) -> Bool {
         return sqlite3_exec(handle, "SELECT 1 FROM sqlite_master LIMIT 1", nil, nil, nil)
             == SQLITE_OK
@@ -121,8 +128,8 @@ public final class Database {
     ///
     /// - Parameters:
     ///   - path: An optional absolute database path.
-    ///   - mode: How the file is read; see ``AccessMode``. Defaults to
-    ///     ``AccessMode/automatic``.
+    ///   - mode: How the file is read; see ``AccessMode``.
+    ///     Defaults to ``AccessMode/automatic``.
     /// - Throws: ``Error/databaseNotFound`` when the file does not exist,
     ///   or ``Error/failedToOpen(_:)`` when SQLite fails to open it.
     public convenience init(path: String? = nil, mode: AccessMode = .automatic) throws {
