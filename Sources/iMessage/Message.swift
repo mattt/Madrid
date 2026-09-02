@@ -22,9 +22,8 @@ public struct Message: Identifiable, Hashable, Codable, Sendable {
 
     /// The identifier of the chat this message belongs to, if any.
     ///
-    /// Messages sent by the current user from another device
-    /// carry no sender handle, so this is the only way to tell
-    /// which conversation they are part of.
+    /// Messages sent by the current user from another device carry no sender handle,
+    /// so this is the only way to tell which conversation they are part of.
     public let chatID: Chat.ID?
 
     /// A Boolean value that indicates whether this message has been read.

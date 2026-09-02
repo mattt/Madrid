@@ -414,9 +414,8 @@ public final class Database {
             let placeholders = placeholders(handles.count)
             // Messages from the current user only carry a handle
             // when they were sent from this Mac;
-            // those sent from another device (and synced over iCloud)
-            // have no handle and can only be matched
-            // through the chat they belong to.
+            // those sent from another device (and synced over iCloud) have no handle
+            // and can only be matched through the chat they belong to.
             let condition = """
                 (
                     m.ROWID IN (

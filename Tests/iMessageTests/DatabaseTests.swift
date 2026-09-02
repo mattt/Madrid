@@ -249,7 +249,8 @@ struct DatabaseTests {
         // person@example.com only takes part in chat 1.
         #expect(try ids(with: ["person@example.com"]) == ["msg-guid-2", "msg-guid-3"])
 
-        // Combined with a chat predicate, the join path reports the right chat.
+        // Combined with a chat predicate,
+        // the join path reports the right chat.
         let inChat2 = try db.fetch(
             Database.MessageFetchRequest(
                 predicate: .and([
