@@ -247,6 +247,23 @@ public final class Database {
             parameters.append(try bindableInt32(request.limit, name: "limit"))
             parameters.append(try bindableInt32(request.offset, name: "offset"))
 
+            // When the predicate already joins the chat tables,
+            // report the chat that satisfied it;
+            // otherwise look the chat up per message.
+            let chatGuidColumn =
+                compiledPredicate.requiresChatJoin
+                ? "c.guid"
+                : """
+                (
+                    SELECT c2.guid
+                    FROM chat_message_join cmj2
+                    JOIN chat c2 ON cmj2.chat_id = c2.ROWID
+                    WHERE cmj2.message_id = m.ROWID
+                    ORDER BY cmj2.chat_id
+                    LIMIT 1
+                )
+                """
+
             let query = """
                     SELECT
                         m.guid,
@@ -256,7 +273,8 @@ public final class Database {
                         m.is_from_me,
                         h.id,
                         m.service,
-                        m.date_read
+                        m.date_read,
+                        \(chatGuidColumn) AS chat_guid
                     FROM message m
                     \(compiledPredicate.requiresChatJoin ? "JOIN chat_message_join cmj ON m.ROWID = cmj.message_id" : "")
                     \(compiledPredicate.requiresChatJoin ? "JOIN chat c ON cmj.chat_id = c.ROWID" : "")
@@ -304,13 +322,17 @@ public final class Database {
                 let senderText = sqlite3_column_text(statement, 5)
                 let sender = senderText.map { Account.Handle(rawValue: String(cString: $0)) }
 
+                let chatGuidText = sqlite3_column_text(statement, 8)
+                let chatID = chatGuidText.map { Chat.ID(rawValue: String(cString: $0)) }
+
                 return Message(
                     id: messageID,
                     text: text,
                     date: date,
                     isFromMe: isFromMe,
                     readAt: readAt,
-                    sender: sender
+                    sender: sender,
+                    chatID: chatID
                 )
             }
         }
@@ -390,17 +412,33 @@ public final class Database {
             }
             let handleValues = orderedHandleValues(handles)
             let placeholders = placeholders(handles.count)
+            // Messages from the current user only carry a handle
+            // when they were sent from this Mac;
+            // those sent from another device (and synced over iCloud) have no handle
+            // and can only be matched through the chat they belong to.
             let condition = """
-                m.ROWID IN (
-                    SELECT m2.ROWID
-                    FROM message m2
-                    JOIN handle h ON m2.handle_id = h.ROWID
-                    WHERE h.id IN (\(placeholders))
+                (
+                    m.ROWID IN (
+                        SELECT m2.ROWID
+                        FROM message m2
+                        JOIN handle h ON m2.handle_id = h.ROWID
+                        WHERE h.id IN (\(placeholders))
+                    )
+                    OR (
+                        m.is_from_me = 1
+                        AND m.ROWID IN (
+                            SELECT cmj.message_id
+                            FROM chat_message_join cmj
+                            JOIN chat_handle_join chj ON chj.chat_id = cmj.chat_id
+                            JOIN handle h ON chj.handle_id = h.ROWID
+                            WHERE h.id IN (\(placeholders))
+                        )
+                    )
                 )
                 """
             return CompiledPredicate(
                 whereClause: condition,
-                parameters: toBindableStrings(handleValues),
+                parameters: toBindableStrings(handleValues) + toBindableStrings(handleValues),
                 requiresChatJoin: false
             )
         case .dateRange(let dateRange):
@@ -469,6 +507,12 @@ public final class Database {
             return CompiledPredicate(whereClause: nil, parameters: [], requiresChatJoin: false)
         case .none:
             return CompiledPredicate(whereClause: "1 = 0", parameters: [], requiresChatJoin: false)
+        case .id(let chatID):
+            return CompiledPredicate(
+                whereClause: "c.guid = ?",
+                parameters: [chatID.rawValue],
+                requiresChatJoin: false
+            )
         case .participantHandles(let handles, let match):
             if handles.isEmpty {
                 let whereClause = match == .all ? nil : "1 = 0"

@@ -91,9 +91,11 @@ struct DatabaseTests {
             "person@example.com",
         ]
         let participantMessages = try db.fetchMessages(with: participants)
-        #expect(participantMessages.count == 3)
+        #expect(participantMessages.count == 4)
         #expect(participantMessages.contains { $0.sender?.rawValue == "+1234567890" })
         #expect(participantMessages.contains { $0.sender?.rawValue == "person@example.com" })
+        // The current user's reply in the chat with these participants is included too.
+        #expect(participantMessages.contains { $0.id.rawValue == "msg-guid-2" && $0.isFromMe })
 
         // Test with date range
         let yesterday = Date().addingTimeInterval(-86400)
@@ -109,15 +111,24 @@ struct DatabaseTests {
     func testFetchMessagesByParticipant() async throws {
         let handle: Account.Handle = "+1234567890"
 
-        // Test basic fetch
+        // Test basic fetch: the handle's own messages,
+        // plus the current user's message in the chat with that handle
         let messages = try db.fetchMessages(with: [handle], limit: 10)
-        #expect(messages.count == 2)
-        #expect(messages[0].id.rawValue == "msg-guid-1")
-        #expect(messages[0].text == "Hello!")
-        #expect(messages[0].isFromMe == false)
-        #expect(messages[0].isRead == false)
-        #expect(messages[0].readAt == nil)
-        #expect(messages[0].sender?.rawValue == "+1234567890")
+        #expect(messages.count == 3)
+        #expect(messages.map(\.id.rawValue) == ["msg-guid-2", "msg-guid-1", "msg-guid-4"])
+
+        #expect(messages[0].isFromMe == true)
+        #expect(messages[0].sender == nil)
+        #expect(messages[0].chatID?.rawValue == "chat-guid-1")
+
+        #expect(messages[1].text == "Hello!")
+        #expect(messages[1].isFromMe == false)
+        #expect(messages[1].isRead == false)
+        #expect(messages[1].readAt == nil)
+        #expect(messages[1].sender?.rawValue == "+1234567890")
+        #expect(messages[1].chatID?.rawValue == "chat-guid-1")
+
+        #expect(messages[2].chatID?.rawValue == "chat-guid-2")
 
         // Test with date range
         let yesterday = Date().addingTimeInterval(-86400)
@@ -168,7 +179,114 @@ struct DatabaseTests {
 
         let messages = try db.fetch(request)
         let messageIDs = Set(messages.map(\.id.rawValue))
-        #expect(messageIDs == ["msg-guid-3", "msg-guid-4", "msg-guid-5"])
+        // msg-guid-2 is the current user's message in the chat with person@example.com.
+        #expect(messageIDs == ["msg-guid-2", "msg-guid-3", "msg-guid-4", "msg-guid-5"])
+    }
+
+    @Test
+    func testMessagesReportTheirChat() async throws {
+        // Plain fetch: the chat is looked up per message.
+        let allMessages = try db.fetch(
+            Database.MessageFetchRequest(sortDescriptors: [.id(.ascending)], limit: 10)
+        )
+        #expect(
+            allMessages.map(\.chatID?.rawValue) == [
+                "chat-guid-1", "chat-guid-1", "chat-guid-1", "chat-guid-2", "chat-guid-2",
+            ]
+        )
+
+        // Chat-scoped fetch: the joined chat is reported.
+        let chatMessages = try db.fetch(
+            Database.MessageFetchRequest(predicate: .chatID("chat-guid-2"), limit: 10)
+        )
+        #expect(chatMessages.count == 2)
+        #expect(chatMessages.allSatisfy { $0.chatID?.rawValue == "chat-guid-2" })
+
+        // A message that is not linked to any chat has no chat identifier.
+        try db.execute(
+            """
+                INSERT INTO message (ROWID, guid, text, attributedBody, handle_id, date, is_from_me, date_read, service)
+                VALUES (6, 'msg-guid-6', 'Orphan', NULL, 1, \(Date().nanosecondsSinceReferenceDate ?? 0), 0, 0, 'iMessage');
+            """
+        )
+        let orphan = try db.fetch(
+            Database.MessageFetchRequest(predicate: .participantHandles(["+1234567890"]), limit: 10)
+        ).first { $0.id.rawValue == "msg-guid-6" }
+        #expect(orphan != nil)
+        #expect(orphan?.chatID == nil)
+    }
+
+    @Test
+    func testParticipantPredicateIncludesOwnMessagesInChat() async throws {
+        // A message sent by the current user from another device:
+        // no handle at all (chat.db stores 0), only a chat membership.
+        try db.execute(
+            """
+                INSERT INTO message (ROWID, guid, text, attributedBody, handle_id, date, is_from_me, date_read, service)
+                VALUES (6, 'msg-guid-6', 'Sent from my phone', NULL, 0, \(Date().nanosecondsSinceReferenceDate ?? 0), 1, 0, 'iMessage');
+                INSERT INTO chat_message_join (chat_id, message_id) VALUES (2, 6);
+            """
+        )
+
+        func ids(with handles: Set<Account.Handle>) throws -> Set<String> {
+            let request = Database.MessageFetchRequest(
+                predicate: .participantHandles(handles),
+                limit: 10
+            )
+            return Set(try db.fetch(request).map(\.id.rawValue))
+        }
+
+        // third@example.com only takes part in chat 2:
+        // their own message, and mine in that chat — not my message in chat 1.
+        #expect(try ids(with: ["third@example.com"]) == ["msg-guid-5", "msg-guid-6"])
+
+        // +1234567890 takes part in both chats: their messages and mine in either chat,
+        // but not what person@example.com wrote in chat 1.
+        #expect(
+            try ids(with: ["+1234567890"]) == ["msg-guid-1", "msg-guid-2", "msg-guid-4", "msg-guid-6"]
+        )
+
+        // person@example.com only takes part in chat 1.
+        #expect(try ids(with: ["person@example.com"]) == ["msg-guid-2", "msg-guid-3"])
+
+        // Combined with a chat predicate,
+        // the join path reports the right chat.
+        let inChat2 = try db.fetch(
+            Database.MessageFetchRequest(
+                predicate: .and([
+                    .chatID("chat-guid-2"),
+                    .participantHandles(["+1234567890"]),
+                ]),
+                limit: 10
+            )
+        )
+        #expect(Set(inChat2.map(\.id.rawValue)) == ["msg-guid-4", "msg-guid-6"])
+        #expect(inChat2.allSatisfy { $0.chatID?.rawValue == "chat-guid-2" })
+    }
+
+    @Test
+    func testFetchChatByID() async throws {
+        let chats = try db.fetch(
+            Database.ChatFetchRequest(predicate: .id("chat-guid-2"), limit: 10)
+        )
+        #expect(chats.count == 1)
+        #expect(chats[0].id.rawValue == "chat-guid-2")
+        #expect(chats[0].displayName == "Another Group")
+        #expect(Set(chats[0].participants.map(\.rawValue)) == ["+1234567890", "third@example.com"])
+
+        let missing = try db.fetch(
+            Database.ChatFetchRequest(predicate: .id("no-such-chat"), limit: 10)
+        )
+        #expect(missing.isEmpty)
+
+        let several = try db.fetch(
+            Database.ChatFetchRequest(
+                predicate: .or([.id("chat-guid-1"), .id("chat-guid-2")]),
+                sortDescriptors: [.id(.ascending)],
+                limit: 10
+            )
+        )
+        #expect(several.map(\.id.rawValue) == ["chat-guid-1", "chat-guid-2"])
     }
 
     @Test
