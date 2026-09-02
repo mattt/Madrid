@@ -185,7 +185,7 @@ public final class Database {
     }
 
     // Remove transaction from execute
-    private func execute<T>(
+    func execute<T>(
         _ query: String,
         parameters: [any Bindable] = [],
         transform: (OpaquePointer) throws -> T?
@@ -204,10 +204,19 @@ public final class Database {
         }
 
         var results: [T] = []
-        while sqlite3_step(statement) == SQLITE_ROW {
+        var status = sqlite3_step(statement)
+        while status == SQLITE_ROW {
             if let result = try transform(statement) {
                 results.append(result)
             }
+            status = sqlite3_step(statement)
+        }
+
+        // Anything other than a clean end of results is an error,
+        // including `SQLITE_BUSY` when a live connection loses a race with Messages;
+        // returning what was read so far would silently truncate the results.
+        guard status == SQLITE_DONE else {
+            throw Error.queryError(String(cString: sqlite3_errmsg(db)))
         }
 
         return results
@@ -823,7 +832,7 @@ private extension SortOrder {
     }
 }
 
-private protocol Bindable {
+protocol Bindable {
     func bind(to statement: OpaquePointer, at index: Int32)
 }
 
@@ -834,19 +843,19 @@ extension String: Bindable {
 }
 
 extension Double: Bindable {
-    fileprivate func bind(to statement: OpaquePointer, at index: Int32) {
+    func bind(to statement: OpaquePointer, at index: Int32) {
         sqlite3_bind_double(statement, index, self)
     }
 }
 
 extension Int32: Bindable {
-    fileprivate func bind(to statement: OpaquePointer, at index: Int32) {
+    func bind(to statement: OpaquePointer, at index: Int32) {
         sqlite3_bind_int(statement, index, self)
     }
 }
 
 extension Int64: Bindable {
-    fileprivate func bind(to statement: OpaquePointer, at index: Int32) {
+    func bind(to statement: OpaquePointer, at index: Int32) {
         sqlite3_bind_int64(statement, index, self)
     }
 }
