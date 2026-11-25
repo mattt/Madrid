@@ -20,6 +20,42 @@ struct DatabaseTests {
     }
 
     @Test
+    func testFetchParticipantMatchesWholeEmailAddresses() throws {
+        try db.execute(
+            """
+            INSERT INTO handle (id, uncanonicalized_id) VALUES
+                ('A_B%@Example.com', NULL),
+                ('prefixA_B%@example.com', NULL),
+                ('AxB123@example.com', NULL),
+                ('other@example.com', 'A_B%@EXAMPLE.COM'),
+                ('CAFÉ@example.com', NULL);
+            """
+        )
+
+        let handles = try db.fetchParticipant(matching: ["  a_b%@example.COM\n"])
+        #expect(Set(handles) == ["A_B%@Example.com", "other@example.com"])
+        #expect(try db.fetchParticipant(matching: ["café@example.com"]) == ["CAFÉ@example.com"])
+    }
+
+    @Test
+    func testFetchParticipantWithPhoneAndEmailAliases() throws {
+        try db.execute(
+            """
+            INSERT INTO handle (id, uncanonicalized_id) VALUES
+                ('+12025550101', NULL),
+                ('alternate@example.com', '(202) 555-0102');
+            """
+        )
+
+        let phones = ["(202) 555-0101", "(202) 555-0102"]
+        let phoneMatches = try db.fetchParticipant(matching: phones)
+        #expect(Set(phoneMatches) == ["+12025550101", "alternate@example.com"])
+
+        let allMatches = try db.fetchParticipant(matching: phones + ["PERSON@example.com"])
+        #expect(Set(allMatches) == ["+12025550101", "alternate@example.com", "person@example.com"])
+    }
+
+    @Test
     func testFetchChats() async throws {
         // Test basic fetch - should get both chats ordered by last message
         let chats = try db.fetchChats(limit: 10)

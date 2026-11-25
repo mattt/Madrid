@@ -70,6 +70,7 @@ enum Fixtures {
                 CREATE TABLE handle (
                     ROWID INTEGER PRIMARY KEY,
                     id TEXT NOT NULL,
+                    uncanonicalized_id TEXT,
                     service TEXT
                 );
                 

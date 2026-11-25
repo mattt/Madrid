@@ -102,7 +102,9 @@ public final class Database {
     /// closing it again when SQLite reports a failure.
     private static func open(_ filename: String, flags: Flags) throws -> OpaquePointer? {
         var handle: OpaquePointer?
-        guard sqlite3_open_v2(filename, &handle, flags.rawValue, nil) == SQLITE_OK else {
+        guard sqlite3_open_v2(filename, &handle, flags.rawValue, nil) == SQLITE_OK,
+            sqlite3_create_collation(handle, "madrid_email", SQLITE_UTF8, nil, compareEmailAddresses) == SQLITE_OK
+        else {
             let message = String(cString: sqlite3_errmsg(handle))
             sqlite3_close(handle)
             throw Error.failedToOpen(message)
@@ -792,8 +794,8 @@ public final class Database {
     @available(macOS 13.0, *)
     /// Fetches participants whose aliases match the provided inputs.
     ///
-    /// The matcher handles exact IDs, uncanonicalized IDs,
-    /// and suffix matches for normalized phone numbers.
+    /// Email addresses match either ID column by case-insensitive equality.
+    /// Phone numbers also match by normalized suffix.
     ///
     /// - Parameters:
     ///   - aliases: Candidate phone numbers or email addresses to match.
@@ -806,40 +808,39 @@ public final class Database {
     ) throws -> [Account.Handle] {
         guard !aliases.isEmpty else { return [] }
 
-        // Normalize the input phone numbers/emails
-        let normalized = aliases.map { alias in
-            if alias.contains("@") {
-                // Email: just lowercase
-                return alias.lowercased()
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-            } else {
-                // Phone: remove formatting characters
-                return alias.replacing(/[\s\(\)\-]/, with: "")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-            }
+        let emails = aliases.filter { $0.contains("@") }.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let phones = aliases.filter { !$0.contains("@") }
+        var conditions: [String] = []
+        var parameters: [any Bindable] = []
+
+        if !emails.isEmpty {
+            let list = placeholders(emails.count)
+            conditions.append("h.id COLLATE madrid_email IN (\(list))")
+            conditions.append("h.uncanonicalized_id COLLATE madrid_email IN (\(list))")
+            parameters.append(contentsOf: emails)
+            parameters.append(contentsOf: emails)
         }
 
-        // Create the placeholder strings for IN clauses
-        let placeholders = Array(repeating: "?", count: normalized.count).joined(separator: ",")
+        if !phones.isEmpty {
+            let normalized = phones.map {
+                $0.replacing(/[\s\(\)\-]/, with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            let list = placeholders(phones.count)
+            conditions.append("h.id IN (\(list))")
+            conditions.append("h.uncanonicalized_id IN (\(list))")
+            conditions.append(contentsOf: Array(repeating: "h.id LIKE '%' || ?", count: phones.count))
+            parameters.append(contentsOf: normalized)
+            parameters.append(contentsOf: phones)
+            parameters.append(contentsOf: normalized)
+        }
 
+        parameters.append(Int32(limit))
         let query = """
                 SELECT DISTINCT h.id
                 FROM handle h
-                WHERE h.id IN (\(placeholders))
-                   OR h.uncanonicalized_id IN (\(placeholders))
-                   OR (\(normalized.map { _ in "h.id LIKE '%' || ?" }.joined(separator: " OR ")))
+                WHERE \(conditions.joined(separator: " OR "))
                 LIMIT ?
             """
-
-        var parameters: [any Bindable] = []
-        // Exact matches with id
-        parameters.append(contentsOf: normalized)
-        // Match original inputs with uncanonicalized_id
-        parameters.append(contentsOf: aliases)
-        // Match as suffix of handle id (handles varying country code prefixes)
-        parameters.append(contentsOf: normalized)
-        // Add limit
-        parameters.append(Int32(limit))
 
         return try execute(query, parameters: parameters) { statement in
             guard let idText = sqlite3_column_text(statement, 0) else { return nil }
@@ -866,6 +867,19 @@ public final class Database {
 }
 
 // MARK: -
+
+// SQLite's NOCASE collation only folds ASCII letters.
+private func compareEmailAddresses(
+    _: UnsafeMutableRawPointer?,
+    _ lhsCount: Int32,
+    _ lhsBytes: UnsafeRawPointer?,
+    _ rhsCount: Int32,
+    _ rhsBytes: UnsafeRawPointer?
+) -> Int32 {
+    let lhs = String(decoding: UnsafeRawBufferPointer(start: lhsBytes, count: Int(lhsCount)), as: UTF8.self)
+    let rhs = String(decoding: UnsafeRawBufferPointer(start: rhsBytes, count: Int(rhsCount)), as: UTF8.self)
+    return Int32(lhs.caseInsensitiveCompare(rhs).rawValue)
+}
 
 private extension SortOrder {
     var sqlKeyword: String {
